@@ -30,12 +30,17 @@ namespace trakit.wss {
 		/// A timestamp from when the <see cref="ClientWebSocket"/> began receiving or sending this message.
 		/// </summary>
 		public readonly DateTime created = DateTime.UtcNow;
+		/// <summary>
+		/// When true, this message was received from the server.
+		/// </summary>
+		public readonly bool incoming;
 
 		/// <summary>
 		/// Creates an incoming message from the received bytes.
 		/// </summary>
 		/// <param name="received"></param>
 		public TrakitSocketMessage(IEnumerable<byte> received) {
+			this.incoming = true;
 			this.content = received?.ToArray() ?? new byte[0];
 
 			int space = Array.IndexOf(this.content, SEPARATOR);
@@ -53,6 +58,7 @@ namespace trakit.wss {
 		/// <param name="name"></param>
 		/// <param name="body"></param>
 		public TrakitSocketMessage(string name, string body) {
+			this.incoming = false;
 			this.name = name;
 			this.body = body;
 			this.content = Encoding.UTF8.GetBytes($"{name} {body}");
