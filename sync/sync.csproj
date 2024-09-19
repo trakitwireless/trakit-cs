@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\trakit-dotnet\objects\objects.csproj" />
+    <ProjectReference Include="..\..\trakit-dotnet\objects\objects.csproj" />
   </ItemGroup>
 
 </Project>

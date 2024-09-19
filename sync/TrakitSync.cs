@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Net.Http;
+﻿using System.Collections.Concurrent;
 using trakit.https;
 using trakit.objects;
 using trakit.wss;

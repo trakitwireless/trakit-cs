@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.11.35312.102
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "trakit-cs", "trakit-cs.csproj", "{E95410BF-B3AE-441C-9816-2FB84794952C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sync", "sync\sync.csproj", "{E95410BF-B3AE-441C-9816-2FB84794952C}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "objects", "..\trakit-dotnet\objects\objects.csproj", "{8125D2DC-CA29-437C-AEA4-DBDA099C4C59}"
 EndProject

@@ -34,6 +34,10 @@ namespace trakit.wss {
 		/// When true, this message was received from the server.
 		/// </summary>
 		public readonly bool incoming;
+		/// <summary>
+		/// When specified, will close the socket after sending the message with this reason.
+		/// </summary>
+		public WebSocketCloseStatus reason;
 
 		/// <summary>
 		/// Creates an incoming message from the received bytes.
@@ -51,18 +55,20 @@ namespace trakit.wss {
 				this.name = this.decode(0, space);
 				this.body = this.decode(space + 1, this.content.Length);
 			}
+			this.reason = WebSocketCloseStatus.Empty;
 		}
 		/// <summary>
 		/// Creates an outgoing message from the given <c>name</c> and <c>body</c>.
 		/// </summary>
 		/// <param name="name"></param>
 		/// <param name="body"></param>
-		public TrakitSocketMessage(string name, string body) {
+		/// <param name="reason"></param>
+		public TrakitSocketMessage(string name, string body, WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure) {
 			this.incoming = false;
 			this.name = name;
 			this.body = body;
 			this.content = Encoding.UTF8.GetBytes($"{name} {body}");
-			base.ToString();
+			this.reason = reason;
 		}
 
 		/// <summary>
