@@ -28,6 +28,7 @@ namespace trakit.wss {
 			return value == string.Empty ? null : value;
 		}
 		#endregion Statics
+	
 		/// <summary>
 		/// The underlying connection.
 		/// </summary>
@@ -35,10 +36,14 @@ namespace trakit.wss {
 		/// <summary>
 		/// 
 		/// </summary>
-		public TrakitSocketStatus status = TrakitSocketStatus.closed;
+		public TrakitSocketStatus status { get; private set; } = TrakitSocketStatus.closed;
 		/// <summary>
 		/// 
 		/// </summary>
+		/// <remarks>
+		/// Prod - wss://socket.trakit.ca/
+		/// Beta - wss://kraken.trakit.ca/
+		/// </remarks>
 		public Uri address;
 
 		public TrakitSocket() {
@@ -47,18 +52,21 @@ namespace trakit.wss {
 		public void Dispose() {
 			var client = this.client;
 			this.client = null;
-			client?.Dispose();
 			_sauce?.Cancel();
 			client?.Abort();
 			client?.Dispose();
 		}
 
 		#region Sending and Receiving Messages
+		// generic disconnect message
 		const string BYEBYE = "Goodbye!";
+		// 1mb buffer for receiving; way more than enough
 		const int BUFFER = 1024 * 1024;
+		// token source for managing connecting, and incoming/outgoing messaging
 		CancellationTokenSource _sauce;
-		Task _receiver, _sender;
-		BlockingCollection<TrakitSocketMessage> _outgoing;
+		// task to handle incoming messages and server-side disconnections
+		Task _receiver;
+		//
 		async Task _receiving(CancellationToken ct) {
 			string closeMessage = BYEBYE;
 			WebSocketCloseStatus closeReason = WebSocketCloseStatus.NormalClosure;
@@ -110,20 +118,23 @@ namespace trakit.wss {
 			}
 			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
 		}
-		void _connectionResponse(TrakitSocket sender, TrakitSocketMessage message) {
+		//
+		void _receivingFirstMessage(TrakitSocket sender, TrakitSocketMessage message) {
 			if (message.name == "connectionResponse") {
-				this.MessageReceived -= _connectionResponse;
+				this.MessageReceived -= _receivingFirstMessage;
 				_onStatus(TrakitSocketStatus.open);
 				// get resp-self
 			}
 		}
 
-		/// <summary>
-		/// This message is a priority message that closes the socket.  It is only set for abnormal states
-		/// where closing the connection is a priority before sending any other messages in the
-		/// <see cref="outgoing"/> queue.
-		/// </summary>
+
+		// task to handle outgoing messages and client-side disconnections
+		Task _sender;
+		// list of outgoing messages
+		BlockingCollection<TrakitSocketMessage> _outgoing;
+		//
 		TrakitSocketMessage _closer;
+		//
 		async Task _sending(CancellationToken ct) {
 			try {
 				while (_outgoing.TryTake(out TrakitSocketMessage message, -1, ct)) {
@@ -139,8 +150,8 @@ namespace trakit.wss {
 						}
 					} else {
 						await _sendingClose(
-							WebSocketCloseStatus.NormalClosure,
-							message.name,
+							_closer.reason,
+							_closer.name,
 							ct
 						);
 						break;
@@ -150,6 +161,7 @@ namespace trakit.wss {
 				// socket disconnect
 				if (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely) {
 					_sauce?.Cancel();
+					_onStatus(TrakitSocketStatus.closing);
 				} else {
 					await _sendingClose(
 						WebSocketCloseStatus.ProtocolError,
@@ -187,24 +199,30 @@ namespace trakit.wss {
 					this.client.Options.SetRequestHeader(pair.Key, pair.Value);
 				}
 			}
-			this.MessageReceived += _connectionResponse;
+			this.MessageReceived += _receivingFirstMessage;
 			await this.client.ConnectAsync(this.address, _sauce.Token);
 			_onStatus(TrakitSocketStatus.opening);
 			_receiver = _receiving(_sauce.Token);
 			_sender = _sending(_sauce.Token);
 		}
-		public async Task disconnect(WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure, string message = BYEBYE) {
-			_closer = new TrakitSocketMessage(message, string.Empty, reason);
-			_outgoing.TryAdd(_closer, -1, _sauce.Token);
+		public async Task disconnect(
+			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
+			string message = BYEBYE
+		) {
+			var close = new TrakitSocketMessage(message, string.Empty, reason);
+			if (reason != WebSocketCloseStatus.NormalClosure) _closer = close;
+			_outgoing.TryAdd(close, -1, _sauce.Token);
 			try { await _sender; } catch { } finally { _sender?.Dispose(); }
 			try { await _receiver; } catch { } finally { _receiver?.Dispose(); }
 			var client = this.client;
 			this.client = null;
+			client?.Abort();
 			client?.Dispose();
+			_outgoing.Dispose();
 			_sauce?.Dispose();
 			_sauce = null;
-			_receiver =
-				_sender = null;
+			_receiver = null;
+			_sender = null;
 		}
 		public async Task command(string name, object parameters) {
 
