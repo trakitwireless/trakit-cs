@@ -16,7 +16,7 @@ namespace trakit.hmac {
 		/// </summary>
 		public const string SESSION_ID = "ghostId";
 		/// <summary>
-		/// Common name for authorization token used by all systems. (for query-string and cookie; http header uses "X-Shadow-Key")
+		/// Common name for authorization token used by all systems.
 		/// </summary>
 		public const string AUTH_TOKEN = "shadowKey";
 		/// <summary>
@@ -38,6 +38,17 @@ namespace trakit.hmac {
 		/// <summary>
 		/// Creates a signature for a given input using the given secret.
 		/// </summary>
+		/// <param name="secretBase64"></param>
+		/// <param name="utf8Input"></param>
+		/// <returns></returns>
+		public static string hmacSignInput(byte[] secret, string utf8Input)
+			=> signatures.hmacSignInput(
+				secret,
+				Encoding.UTF8.GetBytes(utf8Input)
+			);
+		/// <summary>
+		/// Creates a signature for a given input using the given secret.
+		/// </summary>
 		/// <param name="secret"></param>
 		/// <param name="input"></param>
 		/// <returns></returns>
@@ -46,6 +57,56 @@ namespace trakit.hmac {
 				return Convert.ToBase64String(hmac.ComputeHash(input));
 			}
 		}
+		/// <summary>
+		/// Creates an HMAC256 signed input for use in <see cref="HttpRequestMessage"/>s.
+		/// </summary>
+		/// <param name="apiKey"></param>
+		/// <param name="secretBase64"></param>
+		/// <param name="date"></param>
+		/// <param name="method"></param>
+		/// <param name="absoluteUri"></param>
+		/// <param name="requestLength"></param>
+		/// <returns></returns>
+		public static string createHmacSignedInput(
+			string apiKey,
+			string secretBase64,
+			DateTime date,
+			HttpMethod method,
+			Uri absoluteUri,
+			long requestLength
+		) => signatures.createHmacSignedInput(
+			apiKey,
+			Convert.FromBase64String(secretBase64),
+			date,
+			method,
+			absoluteUri,
+			requestLength
+		);
+		/// <summary>
+		/// Creates an HMAC256 signed input for use in <see cref="HttpRequestMessage"/>s.
+		/// </summary>
+		/// <param name="apiKey"></param>
+		/// <param name="apiSecret"></param>
+		/// <param name="date"></param>
+		/// <param name="method"></param>
+		/// <param name="absoluteUri"></param>
+		/// <param name="requestLength"></param>
+		/// <returns></returns>
+		public static string createHmacSignedInput(
+			string apiKey,
+			byte[] apiSecret,
+			DateTime date,
+			HttpMethod method,
+			Uri absoluteUri,
+			long requestLength
+		) => signatures.hmacSignInput(apiSecret, string.Join("\n", new[] {
+			apiKey,
+			date.ToString("yyyyMMddHHmmss"),
+			method.ToString(),
+			absoluteUri.getSanitizedUri() ,
+			requestLength.ToString()
+		}));
+
 		/// <summary>
 		/// Returns the URI with the session/machine keys removed from the <see cref="Uri.Query"/>.
 		/// </summary>
@@ -87,14 +148,18 @@ namespace trakit.hmac {
 				request.Content?.Headers?.ContentLength ?? 0
 			);
 		/// <summary>
-		/// Adds the appropriate <c>Date</c> and <c>Authentication</c> headers to the <paramref name="request"/> for the given <see cref="Machine"/>.
+		/// Adds the appropriate <c>Date</c> and <c>Authentication</c> headers to the <paramref name="request"/> for the given values.
 		/// </summary>
-		/// <param name="request"></param>
-		/// <param name="machine"></param>
+		/// <param name="apiKey"></param>
+		/// <param name="secretBase64"></param>
+		/// <param name="date"></param>
+		/// <param name="method"></param>
+		/// <param name="absoluteUri"></param>
+		/// <param name="requestLength"></param>
 		/// <returns></returns>
 		public static AuthenticationHeaderValue createHmacHeader(
 			string apiKey,
-			string apiSecret,
+			string secretBase64,
 			DateTime date,
 			HttpMethod method,
 			Uri absoluteUri,
@@ -104,13 +169,14 @@ namespace trakit.hmac {
 			Convert.ToBase64String(Encoding.UTF8.GetBytes(
 				apiKey
 				+ ":"
-				+ signatures.hmacSignInput(apiSecret, string.Join("\n", new[] {
+				+ signatures.createHmacSignedInput(
 					apiKey,
-					date.ToString("yyyyMMddHHmmss"),
-					method.ToString(),
-					absoluteUri.getSanitizedUri() ,
-					requestLength.ToString()
-				}))
+					secretBase64,
+					date,
+					method,
+					absoluteUri,
+					requestLength
+				)
 			))
 		);
 	}
