@@ -2,12 +2,18 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Mail;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using trakit.hmac;
 using trakit.objects;
 
 namespace trakit.wss {
@@ -28,7 +34,7 @@ namespace trakit.wss {
 			return value == string.Empty ? null : value;
 		}
 		#endregion Statics
-	
+
 		/// <summary>
 		/// The underlying connection.
 		/// </summary>
@@ -57,13 +63,46 @@ namespace trakit.wss {
 			client?.Dispose();
 		}
 
-		#region Sending and Receiving Messages
+		#region Handling Disconnect
 		// generic disconnect message
 		const string BYEBYE = "Goodbye!";
-		// 1mb buffer for receiving; way more than enough
-		const int BUFFER = 1024 * 1024;
 		// token source for managing connecting, and incoming/outgoing messaging
 		CancellationTokenSource _sauce;
+		//
+		object _shutlock = new { };
+		//
+		Task _shutter;
+		//
+		async Task _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
+			this.MessageReceived -= _receivingFirstMessage;
+			_sauce.Cancel();
+			_outgoing.CompleteAdding();
+			try { await _sender; } catch { } finally { _sender.Dispose(); }
+			try { await _receiver; } catch { } finally { _receiver.Dispose(); }
+			_outgoing.Dispose();
+			_outgoing = null;
+			_sauce.Dispose();
+			_sauce = null;
+			var client = this.client;
+			this.client = null;
+			client.Abort();
+			client.Dispose();
+			_receiver =
+			_sender =
+			_shutter = null;
+
+			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
+		}
+		//
+		void _shutdown(string closeMessage, WebSocketCloseStatus closeReason) {
+			lock (_shutlock) {
+				_shutter = _shutter ?? _shutting(closeMessage, closeReason);
+			}
+		}
+		#endregion Handling Disconnect
+		#region Receiving Messages
+		// 1mb buffer for receiving; way more than enough
+		const int BUFFER = 1024 * 1024;
 		// task to handle incoming messages and server-side disconnections
 		Task _receiver;
 		//
@@ -89,7 +128,11 @@ namespace trakit.wss {
 							break;
 						case WebSocketMessageType.Close:
 							_onStatus(TrakitSocketStatus.closing);
-							await this.client.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, closeMessage, ct);
+							await this.client.CloseOutputAsync(
+								WebSocketCloseStatus.NormalClosure,
+								closeMessage,
+								ct
+							);
 							break;
 						default:
 							throw new TrakitSocketException(
@@ -100,23 +143,21 @@ namespace trakit.wss {
 				} catch (OperationCanceledException) {
 					// CancellationToken cancelled
 					_onStatus(TrakitSocketStatus.closing);
-				} catch (WebSocketException ex) {
-					// socket disconnect
-					_onStatus(TrakitSocketStatus.closing);
-					closeMessage = ex.Message;
-					closeReason = WebSocketCloseStatus.ProtocolError;
-					await this.client.CloseOutputAsync(WebSocketCloseStatus.ProtocolError, ex.Message, ct);
 				} catch (Exception ex) {
 					_onStatus(TrakitSocketStatus.closing);
 					var reason = ex is TrakitSocketException tse
 							? tse.reason
-							: WebSocketCloseStatus.InternalServerError;
+							: WebSocketCloseStatus.ProtocolError;
 					closeMessage = ex.Message;
 					closeReason = reason;
-					await this.client.CloseOutputAsync(reason, ex.Message, ct);
+					await this.client.CloseOutputAsync(
+						reason,
+						closeMessage,
+						ct
+					);
 				}
 			}
-			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
+			_shutdown(closeMessage, closeReason);
 		}
 		//
 		void _receivingFirstMessage(TrakitSocket sender, TrakitSocketMessage message) {
@@ -126,8 +167,8 @@ namespace trakit.wss {
 				// get resp-self
 			}
 		}
-
-
+		#endregion Receiving Messages
+		#region Sending Messages
 		// task to handle outgoing messages and client-side disconnections
 		Task _sender;
 		// list of outgoing messages
@@ -136,6 +177,8 @@ namespace trakit.wss {
 		TrakitSocketMessage _closer;
 		//
 		async Task _sending(CancellationToken ct) {
+			string closeMessage = BYEBYE;
+			WebSocketCloseStatus closeReason = WebSocketCloseStatus.NormalClosure;
 			try {
 				while (_outgoing.TryTake(out TrakitSocketMessage message, -1, ct)) {
 					if (_closer == null) {
@@ -149,9 +192,11 @@ namespace trakit.wss {
 							) ?? Task.FromCanceled(ct));
 						}
 					} else {
+						closeMessage = _closer.name;
+						closeReason = _closer.reason;
 						await _sendingClose(
-							_closer.reason,
-							_closer.name,
+							closeReason,
+							closeMessage,
 							ct
 						);
 						break;
@@ -159,27 +204,32 @@ namespace trakit.wss {
 				}
 			} catch (WebSocketException ex) {
 				// socket disconnect
+				closeMessage = ex.Message;
 				if (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely) {
-					_sauce?.Cancel();
+					closeReason = WebSocketCloseStatus.EndpointUnavailable;
 					_onStatus(TrakitSocketStatus.closing);
 				} else {
+					closeReason = WebSocketCloseStatus.ProtocolError;
 					await _sendingClose(
-						WebSocketCloseStatus.ProtocolError,
+						closeReason,
 						ex.Message,
 						ct
 					);
 				}
 			} catch (Exception ex) {
-				await _sendingClose(
-					ex is TrakitSocketException tsx
+				closeMessage = ex.Message;
+				closeReason = ex is TrakitSocketException tsx
 						? tsx.reason
-						: WebSocketCloseStatus.ProtocolError,
-					ex.Message,
+						: WebSocketCloseStatus.ProtocolError;
+				await _sendingClose(
+					closeReason,
+					closeMessage,
 					ct
 				);
 			}
-			_outgoing.CompleteAdding();
+			_shutdown(closeMessage, closeReason);
 		}
+		//
 		async Task _sendingClose(WebSocketCloseStatus reason, string message, CancellationToken ct) {
 			_onStatus(TrakitSocketStatus.closing);
 			await (this.client?.CloseOutputAsync(
@@ -188,9 +238,13 @@ namespace trakit.wss {
 				ct
 			) ?? Task.CompletedTask);
 		}
-		#endregion Sending and Receiving Messages
+		#endregion Sending Messages
 
-		public async Task connect(IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		#region Initiate Connection
+		//
+		void _connectInit(IEnumerable<KeyValuePair<string, string>>? headers) {
+			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+
 			this.client = new ClientWebSocket();
 			_sauce = new CancellationTokenSource();
 			_outgoing = new BlockingCollection<TrakitSocketMessage>();
@@ -200,33 +254,123 @@ namespace trakit.wss {
 				}
 			}
 			this.MessageReceived += _receivingFirstMessage;
-			await this.client.ConnectAsync(this.address, _sauce.Token);
+		}
+		//
+		string _connectUri() {
+			var endpoint = this.address.AbsoluteUri.TrimEnd('?', '/', '&');
+			return endpoint + (endpoint.Contains("?") ? "&" : "?");
+		}
+		//
+		async Task _connectSend(string uri) {
+			var conn = this.client.ConnectAsync(new Uri(uri), _sauce.Token);
 			_onStatus(TrakitSocketStatus.opening);
+			await conn;
 			_receiver = _receiving(_sauce.Token);
 			_sender = _sending(_sauce.Token);
 		}
+
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="sessionId"></param>
+		/// <param name="headers"></param>
+		/// <returns></returns>
+		public async Task connect(
+			Guid sessionId,
+			IEnumerable<KeyValuePair<string, string>>? headers = null
+		) {
+			_connectInit(headers);
+			await _connectSend(
+				_connectUri()
+				+ "ghostId=" + sessionId
+			);
+		}
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="username"></param>
+		/// <param name="password"></param>
+		/// <param name="headers"></param>
+		/// <returns></returns>
+		public async Task connect(
+			MailAddress username,
+			string password,
+			IEnumerable<KeyValuePair<string, string>>? headers = null
+		) {
+			_connectInit(headers);
+			await _connectSend(
+				_connectUri()
+				+ "username=" + username.Address
+				+ "&password=" + password
+			);
+		}
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="apiKey"></param>
+		/// <param name="apiSecret"></param>
+		/// <param name="headers"></param>
+		/// <returns></returns>
+		public async Task connect(
+			string apiKey,
+			string apiSecret,
+			IEnumerable<KeyValuePair<string, string>>? headers = null
+		) {
+			_connectInit(headers);
+			var uri = _connectUri();
+			uri += "shadowKey=" + apiKey
+				+ "&shadowSig="
+				+ signatures.createHmacHeader(
+					apiKey,
+					apiSecret,
+					DateTime.UtcNow,
+					HttpMethod.Get,
+					new Uri(uri),
+					0
+				);
+			await _connectSend(uri);
+		}
+		#endregion Initiate Connection
+		#region Initiate Disconnection
+		//
+		Task _disconnecting() {
+			var sauce = new TaskCompletionSource<bool>();
+			void handler(TrakitSocket sender, string message, WebSocketCloseStatus reason) {
+				if (this.status == TrakitSocketStatus.closed) {
+					this.Disconnected -= handler;
+					sauce.SetResult(true);
+				}
+			};
+			this.Disconnected += handler;
+			return sauce.Task;
+		}
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="reason"></param>
+		/// <param name="message"></param>
+		/// <param name="forceClose"></param>
+		/// <returns></returns>
+		/// <exception cref="InvalidOperationException"></exception>
 		public async Task disconnect(
 			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
-			string message = BYEBYE
+			string message = BYEBYE,
+			bool forceClose = false
 		) {
+			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+
 			var close = new TrakitSocketMessage(message, string.Empty, reason);
-			if (reason != WebSocketCloseStatus.NormalClosure) _closer = close;
+			if (forceClose || reason != WebSocketCloseStatus.NormalClosure) _closer = close;
 			_outgoing.TryAdd(close, -1, _sauce.Token);
-			try { await _sender; } catch { } finally { _sender?.Dispose(); }
-			try { await _receiver; } catch { } finally { _receiver?.Dispose(); }
-			var client = this.client;
-			this.client = null;
-			client?.Abort();
-			client?.Dispose();
-			_outgoing.Dispose();
-			_sauce?.Dispose();
-			_sauce = null;
-			_receiver = null;
-			_sender = null;
+
+			await _disconnecting();
 		}
+		#endregion Initiate Disconnection
+		#region Commands
 		public async Task command(string name, object parameters) {
 
 		}
+		#endregion Commands
 
 		#region Events
 		/// <summary>
@@ -256,6 +400,7 @@ namespace trakit.wss {
 		) {
 			if (this.status != status) {
 				this.status = status;
+				this.StatusChanged?.Invoke(this);
 				switch (status) {
 					case TrakitSocketStatus.open:
 						this.Connected?.Invoke(this);
@@ -271,7 +416,7 @@ namespace trakit.wss {
 		/// <summary>
 		/// Raised for each phase of the connection lifetime.
 		/// </summary>
-		public event ConnectionHandler Status;
+		public event ConnectionHandler StatusChanged;
 		/// <summary>
 		/// Raised when a connection is successfully established.
 		/// </summary>
