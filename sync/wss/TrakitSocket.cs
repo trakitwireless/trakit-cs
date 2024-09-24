@@ -74,7 +74,7 @@ namespace trakit.wss {
 		const string BYEBYE = "Goodbye!";
 		// token source for managing connecting, and incoming/outgoing messaging
 		CancellationTokenSource _sauce;
-		// flagged for setting only one disconnect handler
+		// flag for setting only one disconnect handler
 		object _shutlock = new { };
 		// this is called when either the client or server (not the user) initiates a disconnection
 		void _shutdown(string closeMessage, WebSocketCloseStatus closeReason) {
@@ -201,8 +201,9 @@ namespace trakit.wss {
 							) ?? Task.FromCanceled(ct));
 						}
 					} else {
-						closeMessage = _closer.name;
-						closeReason = _closer.reason;
+						message = _closer;
+						closeMessage = message.name;
+						closeReason = message.reason;
 						await _sendingClose(
 							closeReason,
 							closeMessage,
@@ -210,6 +211,7 @@ namespace trakit.wss {
 						);
 						break;
 					}
+					this.MessageSent?.Invoke(this, message);
 				}
 			} catch (WebSocketException ex) {
 				// socket disconnect
@@ -401,22 +403,26 @@ namespace trakit.wss {
 		/// <param name="type"></param>
 		public delegate void MessageHandler(TrakitSocket sender, TrakitSocketMessage message);
 
+		// flag for setting status
+		object _statlock = new { };
 		// changes the status and raises the appropriate events
 		void _onStatus(
 			TrakitSocketStatus status,
-			string? message = null,
+			string message = BYEBYE,
 			WebSocketCloseStatus reason = WebSocketCloseStatus.Empty
 		) {
-			if (this.status != status) {
-				this.status = status;
-				this.StatusChanged?.Invoke(this);
-				switch (status) {
-					case TrakitSocketStatus.open:
-						this.Connected?.Invoke(this);
-						break;
-					case TrakitSocketStatus.closed:
-						this.Disconnected?.Invoke(this, message, reason);
-						break;
+			lock (_statlock) {
+				if (this.status != status) {
+					this.status = status;
+					this.StatusChanged?.Invoke(this);
+					switch (status) {
+						case TrakitSocketStatus.open:
+							this.Connected?.Invoke(this);
+							break;
+						case TrakitSocketStatus.closed:
+							this.Disconnected?.Invoke(this, message, reason);
+							break;
+					}
 				}
 			}
 		}
