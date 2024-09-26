@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Mail;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,6 +55,11 @@ namespace trakit.wss {
 		/// Beta - wss://kraken.trakit.ca/ - for testing (no SLA, same dataset as prod)
 		/// </remarks>
 		public Uri baseAddress { get; private set; }
+
+		/// <summary>
+		/// Details of the <see cref="User"/> or <see cref="Machine"/> whose <see cref="Session"/> is connected to the <see cref="client"/>.
+		/// </summary>
+		public RespSelfDetails session { get; private set; }
 
 		public TrakitSocket() {
 			this.baseAddress = new Uri("wss://socket.trakit.ca");
@@ -172,7 +178,7 @@ namespace trakit.wss {
 		void _receivingFirstMessage(TrakitSocket sender, TrakitSocketMessage message) {
 			if (message.name == "connectionResponse") {
 				this.MessageReceived -= _receivingFirstMessage;
-				// todo: parse resp-self
+				this.session = JsonSerializer.Deserialize<RespSelfDetails>(message.body);
 				_onStatus(TrakitSocketStatus.open);
 			}
 		}
@@ -404,8 +410,37 @@ namespace trakit.wss {
 		/// <param name="name"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
-		public async Task command(string name, object parameters) {
-			// todo
+		public async Task command(string name, ParameterType parameters) {
+			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+
+			var sauce = new TaskCompletionSource<bool>();
+			var message = new TrakitSocketMessage(
+				name,
+				JsonSerializer.Serialize(parameters)
+			);
+			void handleSent(TrakitSocket sender, TrakitSocketMessage sent) {
+				if (sent == message) {
+					this.StatusChanged -= handleDis;
+					this.MessageSent -= handleSent;
+					sauce.SetResult(true);
+				}
+			}
+			void handleDis(TrakitSocket sender) {
+				switch (this.status) {
+					case TrakitSocketStatus.closing:
+					case TrakitSocketStatus.closed:
+						this.StatusChanged -= handleDis;
+						this.MessageSent -= handleSent;
+						sauce.SetResult(true);
+						break;
+				}
+			};
+			this.StatusChanged += handleDis;
+			this.MessageSent += handleSent;
+
+			// add to outgoing queue
+			_outgoing.TryAdd(message, -1, _sauce.Token);
+			await sauce.Task;
 		}
 		#endregion Commands
 
