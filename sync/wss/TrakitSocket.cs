@@ -68,6 +68,12 @@ namespace trakit.wss {
 		/// </summary>
 		public Uri baseAddress { get; private set; }
 
+
+		/// <summary>
+		/// Details of the <see cref="User"/> or <see cref="Machine"/> whose <see cref="Session"/> is connected to the <see cref="client"/>.
+		/// </summary>
+		public RespSelfDetails session { get; private set; }
+		
 		public TrakitSocket() : this(new Uri(URI_PROD)) { }
 		public TrakitSocket(Uri baseAddress) {
 			this.baseAddress = baseAddress;
@@ -85,7 +91,7 @@ namespace trakit.wss {
 		const string BYEBYE = "Goodbye!";
 		// token source for managing connecting, and incoming/outgoing messaging
 		CancellationTokenSource _sauce;
-		// flagged for setting only one disconnect handler
+		// flag for setting only one disconnect handler
 		object _shutlock = new { };
 		// this is called when either the client or server (not the user) initiates a disconnection
 		void _shutdown(string closeMessage, WebSocketCloseStatus closeReason) {
@@ -183,7 +189,7 @@ namespace trakit.wss {
 		void _receivingFirstMessage(TrakitSocket sender, TrakitSocketMessage message) {
 			if (message.name == "connectionResponse") {
 				this.MessageReceived -= _receivingFirstMessage;
-				// todo: parse resp-self
+				this.session = JsonSerializer.Deserialize<RespSelfDetails>(message.body);
 				_onStatus(TrakitSocketStatus.open);
 			}
 		}
@@ -212,8 +218,9 @@ namespace trakit.wss {
 							) ?? Task.FromCanceled(ct));
 						}
 					} else {
-						closeMessage = _closer.name;
-						closeReason = _closer.reason;
+						message = _closer;
+						closeMessage = message.name;
+						closeReason = message.reason;
 						await _sendingClose(
 							closeReason,
 							closeMessage,
@@ -221,6 +228,7 @@ namespace trakit.wss {
 						);
 						break;
 					}
+					this.MessageSent?.Invoke(this, message);
 				}
 			} catch (WebSocketException ex) {
 				// socket disconnect
@@ -280,13 +288,33 @@ namespace trakit.wss {
 			}
 			this.MessageReceived += _receivingFirstMessage;
 		}
+		// an awaitable task which completes upon disconnection
+		Task _connecting() {
+			var sauce = new TaskCompletionSource<bool>();
+			void handler(TrakitSocket sender) {
+				this.StatusChanged -= handler;
+				if (this.status == TrakitSocketStatus.open) {
+					sauce.SetResult(true);
+				} else {
+					sauce.SetCanceled();
+				}
+			};
+			this.StatusChanged += handler;
+			return sauce.Task;
+		}
 		// sends the connection async, changes status to "opening", and starts sending/receiving tasks
 		async Task _connectSend(string uri) {
-			var conn = this.client.ConnectAsync(new Uri(uri), _sauce.Token);
-			_onStatus(TrakitSocketStatus.opening);
-			await conn;
+			try {
+				var conn = this.client.ConnectAsync(new Uri(uri), _sauce.Token);
+				_onStatus(TrakitSocketStatus.opening);
+				await conn;
+			} catch {
+				_onStatus(TrakitSocketStatus.closed);
+				throw;
+			}
 			_receiver = _receiving(_sauce.Token);
 			_sender = _sending(_sauce.Token);
+			await _connecting();
 		}
 
 		/// <summary>
@@ -347,11 +375,21 @@ namespace trakit.wss {
 		// an awaitable task which completes upon disconnection
 		Task _disconnecting() {
 			var sauce = new TaskCompletionSource<bool>();
-			void handler(TrakitSocket sender, string message, WebSocketCloseStatus reason) {
-				this.Disconnected -= handler;
-				sauce.SetResult(true);
+			void handler(TrakitSocket sender) {
+				switch (this.status) {
+					case TrakitSocketStatus.closing:
+						// do nothing, return instead of break so as to not unbind the handler
+						return;
+					case TrakitSocketStatus.closed:
+						sauce.SetResult(true);
+						break;
+					default:
+						sauce.SetCanceled();
+						break;
+				}
+				this.StatusChanged -= handler;
 			};
-			this.Disconnected += handler;
+			this.StatusChanged += handler;
 			return sauce.Task;
 		}
 		/// <summary>
@@ -362,19 +400,16 @@ namespace trakit.wss {
 		/// </summary>
 		/// <param name="reason">Reason for closing the connection.</param>
 		/// <param name="message">Parting message.</param>
-		/// <param name="forceClose"></param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
 		public async Task disconnect(
 			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
-			string message = BYEBYE,
-			bool forceClose = false
+			string message = BYEBYE
 		) {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
-			var close = new TrakitSocketMessage(message, string.Empty, reason);
-			if (forceClose || reason != WebSocketCloseStatus.NormalClosure) _closer = close;
-			_outgoing.TryAdd(close, -1, _sauce.Token);
+			_closer = new TrakitSocketMessage(message, string.Empty, reason);
+			_outgoing.TryAdd(_closer, -1, _sauce.Token);
 
 			await _disconnecting();
 		}
@@ -386,8 +421,37 @@ namespace trakit.wss {
 		/// <param name="name"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
-		public async Task command(string name, object parameters) {
-			// todo
+		public async Task command(string name, ParameterType parameters) {
+			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+
+			var sauce = new TaskCompletionSource<bool>();
+			var message = new TrakitSocketMessage(
+				name,
+				JsonSerializer.Serialize(parameters)
+			);
+			void handleSent(TrakitSocket sender, TrakitSocketMessage sent) {
+				if (sent == message) {
+					this.StatusChanged -= handleDis;
+					this.MessageSent -= handleSent;
+					sauce.SetResult(true);
+				}
+			}
+			void handleDis(TrakitSocket sender) {
+				switch (this.status) {
+					case TrakitSocketStatus.closing:
+					case TrakitSocketStatus.closed:
+						this.StatusChanged -= handleDis;
+						this.MessageSent -= handleSent;
+						sauce.SetResult(true);
+						break;
+				}
+			};
+			this.StatusChanged += handleDis;
+			this.MessageSent += handleSent;
+
+			// add to outgoing queue
+			_outgoing.TryAdd(message, -1, _sauce.Token);
+			await sauce.Task;
 		}
 		#endregion Commands
 
@@ -412,22 +476,26 @@ namespace trakit.wss {
 		/// <param name="type"></param>
 		public delegate void MessageHandler(TrakitSocket sender, TrakitSocketMessage message);
 
+		// flag for setting status
+		object _statlock = new { };
 		// changes the status and raises the appropriate events
 		void _onStatus(
 			TrakitSocketStatus status,
-			string? message = null,
+			string message = BYEBYE,
 			WebSocketCloseStatus reason = WebSocketCloseStatus.Empty
 		) {
-			if (this.status != status) {
-				this.status = status;
-				this.StatusChanged?.Invoke(this);
-				switch (status) {
-					case TrakitSocketStatus.open:
-						this.Connected?.Invoke(this);
-						break;
-					case TrakitSocketStatus.closed:
-						this.Disconnected?.Invoke(this, message, reason);
-						break;
+			lock (_statlock) {
+				if (this.status != status) {
+					this.status = status;
+					this.StatusChanged?.Invoke(this);
+					switch (status) {
+						case TrakitSocketStatus.open:
+							this.Connected?.Invoke(this);
+							break;
+						case TrakitSocketStatus.closed:
+							this.Disconnected?.Invoke(this, message, reason);
+							break;
+					}
 				}
 			}
 		}
