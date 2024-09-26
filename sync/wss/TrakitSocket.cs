@@ -53,9 +53,9 @@ namespace trakit.wss {
 		/// </summary>
 		int _reqId;
 		/// <summary>
-		/// The underlying connection.
+		/// <see cref="Uri"/> of the Trak-iT WebSocket service.
 		/// </summary>
-		public ClientWebSocket client;
+		public Uri baseAddress { get; private set; }
 		/// <summary>
 		/// This <see cref="WebSocket"/> wrapper's current connection status.
 		/// </summary>
@@ -63,17 +63,16 @@ namespace trakit.wss {
 		/// Does not exactly overlap the <see cref="WebSocketState"/> values.
 		/// </remarks>
 		public TrakitSocketStatus status { get; private set; } = TrakitSocketStatus.closed;
+
 		/// <summary>
-		/// <see cref="Uri"/> of the Trak-iT WebSocket service.
+		/// The underlying connection.
 		/// </summary>
-		public Uri baseAddress { get; private set; }
-
-
+		public ClientWebSocket client { get; private set; }
 		/// <summary>
 		/// Details of the <see cref="User"/> or <see cref="Machine"/> whose <see cref="Session"/> is connected to the <see cref="client"/>.
 		/// </summary>
 		public RespSelfDetails session { get; private set; }
-		
+
 		public TrakitSocket() : this(new Uri(URI_PROD)) { }
 		public TrakitSocket(Uri baseAddress) {
 			this.baseAddress = baseAddress;
@@ -323,9 +322,9 @@ namespace trakit.wss {
 		/// <param name="sessionId"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public async Task connect(IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(IEnumerable<KeyValuePair<string, string>>? headers = null) {
 			_connectInit(headers);
-			await _connectSend(_connectUri());
+			return _connectSend(_connectUri());
 		}
 		/// <summary>
 		/// Resumes a <see cref="WebSocket"/> connection for an existing <see cref="Session"/>.
@@ -333,9 +332,9 @@ namespace trakit.wss {
 		/// <param name="sessionId"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public async Task connect(Guid sessionId, IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(Guid sessionId, IEnumerable<KeyValuePair<string, string>>? headers = null) {
 			_connectInit(headers);
-			await _connectSend(_connectUri() + "ghostId=" + sessionId);
+			return _connectSend(_connectUri() + "ghostId=" + sessionId);
 		}
 		/// <summary>
 		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="User"/> account.
@@ -344,9 +343,9 @@ namespace trakit.wss {
 		/// <param name="password"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public async Task connect(MailAddress username, string password, IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(MailAddress username, string password, IEnumerable<KeyValuePair<string, string>>? headers = null) {
 			_connectInit(headers);
-			await _connectSend(_connectUri() + "username=" + username.Address + "&password=" + password);
+			return _connectSend(_connectUri() + "username=" + username.Address + "&password=" + password);
 		}
 		/// <summary>
 		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="Machine"/> account.
@@ -355,7 +354,7 @@ namespace trakit.wss {
 		/// <param name="apiSecret"><see cref="Machine.secret"/> as bytes from <see cref="Encoding.UTF8"/></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public async Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>>? headers = null) {
 			_connectInit(headers);
 			var uri = _connectUri();
 			uri += "shadowKey=" + apiKey
@@ -368,7 +367,7 @@ namespace trakit.wss {
 					new Uri(uri),
 					0
 				);
-			await _connectSend(uri);
+			return _connectSend(uri);
 		}
 		#endregion Initiate Connection
 		#region Initiate Disconnection
@@ -402,7 +401,7 @@ namespace trakit.wss {
 		/// <param name="message">Parting message.</param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
-		public async Task disconnect(
+		public Task disconnect(
 			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
 			string message = BYEBYE
 		) {
@@ -411,7 +410,7 @@ namespace trakit.wss {
 			_closer = new TrakitSocketMessage(message, string.Empty, reason);
 			_outgoing.TryAdd(_closer, -1, _sauce.Token);
 
-			await _disconnecting();
+			return _disconnecting();
 		}
 		#endregion Initiate Disconnection
 		#region Commands
@@ -421,17 +420,14 @@ namespace trakit.wss {
 		/// <param name="name"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
-		public async Task command(string name, ParameterType parameters) {
+		public Task command(string name, ParameterType parameters) {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
 			// let's track this request.
 			parameters.reqId = parameters.reqId ?? ++_reqId;
 
 			var sauce = new TaskCompletionSource<bool>();
-			var message = new TrakitSocketMessage(
-				name,
-				JsonSerializer.Serialize(parameters)
-			);
+			var message = new TrakitSocketMessage(name, JsonSerializer.Serialize(parameters));
 			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
 				if (received.name == message.name + "Response") {
 					var response = JsonSerializer.Deserialize<ResponseType>(message.body);
@@ -457,7 +453,7 @@ namespace trakit.wss {
 
 			// add to outgoing queue
 			_outgoing.TryAdd(message, -1, _sauce.Token);
-			await sauce.Task;
+			return sauce.Task;
 		}
 		#endregion Commands
 
