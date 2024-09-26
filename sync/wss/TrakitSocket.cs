@@ -424,30 +424,36 @@ namespace trakit.wss {
 		public async Task command(string name, ParameterType parameters) {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
+			// let's track this request.
+			parameters.reqId = parameters.reqId ?? ++_reqId;
+
 			var sauce = new TaskCompletionSource<bool>();
 			var message = new TrakitSocketMessage(
 				name,
 				JsonSerializer.Serialize(parameters)
 			);
-			void handleSent(TrakitSocket sender, TrakitSocketMessage sent) {
-				if (sent == message) {
-					this.StatusChanged -= handleDis;
-					this.MessageSent -= handleSent;
-					sauce.SetResult(true);
+			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
+				if (received.name == message.name + "Response") {
+					var response = JsonSerializer.Deserialize<ResponseType>(message.body);
+					if (response.reqId == parameters.reqId) {
+						this.StatusChanged -= handleDis;
+						this.MessageReceived -= handleMsg;
+						sauce.SetResult(true);
+					}
 				}
 			}
 			void handleDis(TrakitSocket sender) {
 				switch (this.status) {
 					case TrakitSocketStatus.closing:
 					case TrakitSocketStatus.closed:
+						this.MessageReceived -= handleMsg;
 						this.StatusChanged -= handleDis;
-						this.MessageSent -= handleSent;
-						sauce.SetResult(true);
+						sauce.SetCanceled();
 						break;
 				}
 			};
 			this.StatusChanged += handleDis;
-			this.MessageSent += handleSent;
+			this.MessageReceived += handleMsg;
 
 			// add to outgoing queue
 			_outgoing.TryAdd(message, -1, _sauce.Token);
