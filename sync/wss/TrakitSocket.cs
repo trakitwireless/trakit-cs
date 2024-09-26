@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Mail;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,7 +18,23 @@ namespace trakit.wss {
 	/// A wrapper for Trak-iT's <see cref="WebSocket"/> service, including service specific idiosyncrasies.
 	/// </summary>
 	public class TrakitSocket : IDisposable {
+		/// <summary>
+		/// Production <see cref="WebSocket"/> service URL.
+		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
+		/// </summary>
+		public const string URI_PROD = "wss://socket.trakit.ca";
+		/// <summary>
+		/// Testing or beta <see cref="WebSocket"/> service URL.
+		/// This service is not covered by the SLA and should be used to test your own code before deployment.
+		/// Throttling of connections and commands is tighter to help you diagnose issues before switching to production.
+		/// </summary>
+		/// <remarks>
+		/// Both services access the same dataset, so be careful making changes as they will be reflected in production as well.
+		/// </remarks>
+		public const string URI_BETA = "wss://socket.trakit.ca";
+
 		#region Statics
+		//sequential white space of all kinds
 		static Regex WHITESPACE = new Regex(@"[\r\n\s\t]+", RegexOptions.Compiled);
 		/// <summary>
 		/// Replaces all white-space sequences with a single space character, and trims the result.
@@ -49,15 +66,9 @@ namespace trakit.wss {
 		/// <summary>
 		/// <see cref="Uri"/> of the Trak-iT WebSocket service.
 		/// </summary>
-		/// <remarks>
-		/// Prod - wss://socket.trakit.ca/ - covered by SLA
-		/// Beta - wss://kraken.trakit.ca/ - for testing (no SLA, same dataset as prod)
-		/// </remarks>
 		public Uri baseAddress { get; private set; }
 
-		public TrakitSocket() {
-			this.baseAddress = new Uri("wss://socket.trakit.ca");
-		}
+		public TrakitSocket() : this(new Uri(URI_PROD)) { }
 		public TrakitSocket(Uri baseAddress) {
 			this.baseAddress = baseAddress;
 		}
