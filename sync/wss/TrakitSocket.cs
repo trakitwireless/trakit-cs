@@ -414,27 +414,39 @@ namespace trakit.wss {
 		}
 		#endregion Initiate Disconnection
 		#region Commands
+		// command name reply suffix
+		const string SUFFIX = "Response";
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
 		/// </summary>
 		/// <param name="name"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
-		public Task command(string name, ParameterType parameters) {
+		public Task command(string name, ParameterType parameters) => this.command<ResponseType>(name, parameters);
+		/// <summary>
+		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
+		/// </summary>
+		/// <typeparam name="TResponse"></typeparam>
+		/// <param name="name"></param>
+		/// <param name="parameters"></param>
+		/// <returns></returns>
+		/// <exception cref="InvalidOperationException"></exception>
+		/// <exception cref="OperationCanceledException"></exception>
+		public Task command<TResponse>(string name, ParameterType parameters) where TResponse : ResponseType {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
 			// let's track this request.
 			parameters.reqId = parameters.reqId ?? ++_reqId;
-
-			var sauce = new TaskCompletionSource<bool>();
 			var message = new TrakitSocketMessage(name, JsonSerializer.Serialize(parameters));
+
+			var sauce = new TaskCompletionSource<TResponse>();
 			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
-				if (received.name == message.name + "Response") {
-					var response = JsonSerializer.Deserialize<ResponseType>(message.body);
+				if (received.name == message.name + SUFFIX) {
+					var response = JsonSerializer.Deserialize<TResponse>(message.body);
 					if (response.reqId == parameters.reqId) {
 						this.StatusChanged -= handleDis;
 						this.MessageReceived -= handleMsg;
-						sauce.SetResult(true);
+						sauce.SetResult(response);
 					}
 				}
 			}
