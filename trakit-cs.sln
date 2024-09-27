@@ -3,9 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.11.35312.102
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sync", "sync\sync.csproj", "{E95410BF-B3AE-441C-9816-2FB84794952C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "sync", "sync\sync.csproj", "{E95410BF-B3AE-441C-9816-2FB84794952C}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "objects", "..\trakit-dotnet\objects\objects.csproj", "{8125D2DC-CA29-437C-AEA4-DBDA099C4C59}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "tools", "..\trakit-dotnet\tools\tools.csproj", "{9CA108AA-80C0-4893-9536-72E2FFD5E61C}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "commands", "..\trakit-dotnet\commands\commands.csproj", "{BC7E57CE-5B08-4ABD-B045-E03385923773}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +25,14 @@ Global
 		{8125D2DC-CA29-437C-AEA4-DBDA099C4C59}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8125D2DC-CA29-437C-AEA4-DBDA099C4C59}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8125D2DC-CA29-437C-AEA4-DBDA099C4C59}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CA108AA-80C0-4893-9536-72E2FFD5E61C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CA108AA-80C0-4893-9536-72E2FFD5E61C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CA108AA-80C0-4893-9536-72E2FFD5E61C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CA108AA-80C0-4893-9536-72E2FFD5E61C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BC7E57CE-5B08-4ABD-B045-E03385923773}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC7E57CE-5B08-4ABD-B045-E03385923773}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC7E57CE-5B08-4ABD-B045-E03385923773}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC7E57CE-5B08-4ABD-B045-E03385923773}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

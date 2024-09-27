@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using trakit.commands;
 using trakit.hmac;
 using trakit.objects;
 
@@ -422,7 +423,7 @@ namespace trakit.wss {
 		/// <param name="name"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
-		public Task command(string name, ParameterType parameters) => this.command<ResponseType>(name, parameters);
+		public Task<ResponseType> command(string name, ParameterType parameters) => this.command<ResponseType>(name, parameters);
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
 		/// </summary>
@@ -432,11 +433,11 @@ namespace trakit.wss {
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
 		/// <exception cref="OperationCanceledException"></exception>
-		public Task command<TResponse>(string name, ParameterType parameters) where TResponse : ResponseType {
+		public Task<TResponse> command<TResponse>(string name, ParameterType parameters) where TResponse : ResponseType {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
 			// let's track this request.
-			parameters.reqId = parameters.reqId ?? ++_reqId;
+			parameters.reqId = ++_reqId;
 			var message = new TrakitSocketMessage(name, JsonSerializer.Serialize(parameters));
 
 			var sauce = new TaskCompletionSource<TResponse>();
@@ -467,6 +468,35 @@ namespace trakit.wss {
 			_outgoing.TryAdd(message, -1, _sauce.Token);
 			return sauce.Task;
 		}
+
+		/// <summary>
+		/// Subscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.
+		/// </summary>
+		/// <param name="company"></param>
+		/// <param name="subscriptions"></param>
+		/// <returns></returns>
+		public Task<SubscriptionResponse> subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
+			=> this.command<SubscriptionResponse>("subscribe", new SubscriptionRequest() {
+				company = new ParamId() { id = company },
+				subscriptionTypes = subscriptions.ToList()
+			});
+		/// <summary>
+		/// Unsubscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.
+		/// </summary>
+		/// <param name="company"></param>
+		/// <param name="subscriptions"></param>
+		/// <returns></returns>
+		public Task<SubscriptionResponse> unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
+			=> this.command<SubscriptionResponse>("unsubscribe", new SubscriptionRequest() {
+				company = new ParamId() { id = company },
+				subscriptionTypes = subscriptions.ToList()
+			});
+		/// <summary>
+		/// Gets the list of current subscriptions for the <see cref="client"/>.
+		/// </summary>
+		/// <returns></returns>
+		public Task<SubscriptionListResponse> subscriptionList()
+			=> this.command<SubscriptionListResponse>("getSubscriptionsList", new RequestBlank());
 		#endregion Commands
 
 		#region Events
