@@ -32,7 +32,7 @@ namespace trakit.wss {
 		/// <remarks>
 		/// Both services access the same dataset, so be careful making changes as they will be reflected in production as well.
 		/// </remarks>
-		public const string URI_BETA = "wss://socket.trakit.ca";
+		public const string URI_BETA = "wss://kraken.trakit.ca";
 
 		#region Statics
 		//sequential white space of all kinds
