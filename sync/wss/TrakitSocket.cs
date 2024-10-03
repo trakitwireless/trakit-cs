@@ -6,13 +6,13 @@ using System.Net.Http;
 using System.Net.Mail;
 using System.Net.WebSockets;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using trakit.commands;
 using trakit.hmac;
 using trakit.objects;
+using trakit.tools;
 
 namespace trakit.wss {
 	/// <summary>
@@ -73,6 +73,10 @@ namespace trakit.wss {
 		/// Details of the <see cref="User"/> or <see cref="Machine"/> whose <see cref="Session"/> is connected to the <see cref="client"/>.
 		/// </summary>
 		public RespSelfDetails session { get; private set; }
+		/// <summary>
+		/// 
+		/// </summary>
+		public Serializer serializer { get; private set; }
 
 		public TrakitSocket() : this(new Uri(URI_PROD)) { }
 		public TrakitSocket(Uri baseAddress) {
@@ -189,7 +193,7 @@ namespace trakit.wss {
 		void _receivingFirstMessage(TrakitSocket sender, TrakitSocketMessage message) {
 			if (message.name == "connectionResponse") {
 				this.MessageReceived -= _receivingFirstMessage;
-				this.session = JsonSerializer.Deserialize<RespSelfDetails>(message.body);
+				this.session = this.serializer.deserialize<RespSelfDetails>(message.body);
 				_onStatus(TrakitSocketStatus.open);
 			}
 		}
@@ -438,12 +442,12 @@ namespace trakit.wss {
 
 			// let's track this request.
 			parameters.reqId = ++_reqId;
-			var message = new TrakitSocketMessage(name, JsonSerializer.Serialize(parameters));
+			var message = new TrakitSocketMessage(name, this.serializer.serialize(parameters));
 
 			var sauce = new TaskCompletionSource<TResponse>();
 			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
 				if (received.name == message.name + SUFFIX) {
-					var response = JsonSerializer.Deserialize<TResponse>(message.body);
+					var response = this.serializer.deserialize<TResponse>(message.body);
 					if (response.reqId == parameters.reqId) {
 						this.StatusChanged -= handleDis;
 						this.MessageReceived -= handleMsg;
