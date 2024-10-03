@@ -76,7 +76,7 @@ namespace trakit.wss {
 		/// <summary>
 		/// 
 		/// </summary>
-		public Serializer serializer { get; private set; }
+		public Serializer serializer { get; private set; } = new Serializer();
 
 		public TrakitSocket() : this(new Uri(URI_PROD)) { }
 		public TrakitSocket(Uri baseAddress) {

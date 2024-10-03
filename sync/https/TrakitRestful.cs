@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.WebSockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using trakit.hmac;
 using trakit.objects;
 using trakit.tools;
 using trakit.wss;
@@ -40,7 +43,7 @@ namespace trakit.https {
 		/// <summary>
 		/// The underlying client making HTTPS requests.
 		/// </summary>
-		public HttpClient client;
+		public HttpClient client { get; private set; }
 		/// <summary>
 		/// Details of the <see cref="User"/> or <see cref="Machine"/> whose <see cref="Session"/> is connected to the <see cref="client"/>.
 		/// </summary>
@@ -48,11 +51,12 @@ namespace trakit.https {
 		/// <summary>
 		/// 
 		/// </summary>
-		public Serializer serializer { get; private set; }
+		public Serializer serializer { get; private set; } = new Serializer();
 
 		public TrakitRestful() : this(new Uri(URI_PROD)) { }
 		public TrakitRestful(Uri baseAddress) {
 			this.baseAddress = baseAddress;
+			this.client = new HttpClient();
 		}
 		public void Dispose() {
 			var client = this.client;
@@ -62,34 +66,86 @@ namespace trakit.https {
 		}
 
 
-
-		public Task<T> get<T>(ulong id) where T : Subscribable {
-
+		Machine _machine;
+		Guid _sessionId;
+		public void setMachine(Machine machine) {
+			_machine = machine;
+			_sessionId = default;
 		}
-		public Task<T> list<T>(ulong id) where T : Subscribable {
-
-		}
-		public Task<T> merge<T>(ulong id, JObject json) where T : Subscribable {
-
-		}
-		public Task<T> delete<T>(ulong id) where T : Subscribable, IDeletable {
-
-		}
-		public Task<T> restore<T>(ulong id) where T : Subscribable, IDeletable {
-
-		}
-		public Task<T> suspend<T>(ulong id) where T : Subscribable, ISuspendable {
-
-		}
-		public Task<T> revive<T>(ulong id) where T : Subscribable, ISuspendable {
-
+		public void setSessionId(Guid sessionId) {
+			_machine = default;
+			_sessionId = sessionId;
 		}
 
-		public Task<T> revive<T>(ulong id) where T : Subscribable, ISuspendable {
+
+
+
+
+
+		async Task<TrakitRestfulResponse> _send<T>(HttpMethod method, string path, JObject body = default) where T : ResponseType {
+			_reqId++;
+			path = this.baseAddress.ToString() + path;
+			var request = new HttpRequestMessage(HttpMethod.Post, path);
+			if (body != default) {
+				if (!((IDictionary<string, JToken>)body).ContainsKey("reqId")) {
+					body["reqId"] = _reqId;
+				}
+				request.Content = new StringContent(
+					this.serializer.serialize(body),
+					Encoding.UTF8,
+					"text/json"
+				);
+			}
+			if (_machine != default) {
+				request.RequestUri = new Uri(path);
+				signatures.createHmacHeader(request, _machine);
+			} else if (_sessionId != default) {
+				request.RequestUri = new Uri(path + $"{(!path.Contains("?") ? "?" : "&")}ghostId={_sessionId}");
+			}
+			var response = await this.client.SendAsync(request);
+			return new TrakitRestfulResponse(
+				response,
+				this.serializer.deserialize<T>(await response.Content.ReadAsStringAsync())
+			);
+		}
+
+		public Task<TrakitRestfulResponse> login(string username, string password, string userAgent = null) {
+			var body = new JObject(
+				new JProperty("username", username),
+				new JProperty("password", password)
+			);
+			if (userAgent != default) body["userAgent"] = userAgent;
+			return _send<RespSelfDetails>(
+				HttpMethod.Post,
+				"self/login",
+				body
+			);
+		}
+
+
+
+
+		public Task<TrakitRestfulResponse> get<T>(string key) where T : IRequestable {
 
 		}
-		public Task<T> revive<T>(ulong id) where T : Subscribable, ISuspendable {
+		public Task<TrakitRestfulResponse> list<T>(string key) where T : IRequestable {
 
 		}
+		public Task<TrakitRestfulResponse> merge<T>(string key, JObject body) where T : IRequestable {
+
+		}
+		public Task<TrakitRestfulResponse> delete<T>(string key) where T : IRequestable, IDeletable {
+
+		}
+		public Task<TrakitRestfulResponse> restore<T>(string key) where T : IRequestable, IDeletable {
+
+		}
+		public Task<TrakitRestfulResponse> suspend<T>(string key) where T : IRequestable, ISuspendable {
+
+		}
+		public Task<TrakitRestfulResponse> revive<T>(string key) where T : IRequestable, ISuspendable {
+
+		}
+
 	}
 }
