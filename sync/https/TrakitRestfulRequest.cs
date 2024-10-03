@@ -1,27 +1,28 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Net.Http;
-using System.Net.WebSockets;
-using System.Threading;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 using trakit.objects;
-using trakit.tools;
-using trakit.wss;
 
 namespace trakit.https {
 	/// <summary>
 	/// 
 	/// </summary>
-	public class TrakitRestfulRequest<T> where T : Subscribable {
-		
-		public static string listByCompany<T>(
-			T cacheable = default
-		) where T : Subscribable, IBelongCompany => listByCompany(
-			cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"),
-			cacheable.company
-		);
+	public class TrakitRestfulRequest {
+		public static string listByParent<T>(T cacheable) where T : Subscribable, IAmCompany
+			=> listByParent(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.id);
+		public static string listByCompany<T>(T cacheable) where T : Subscribable, IBelongCompany
+			=> listByCompany(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.company);
+		public static string listByAsset<T>(T cacheable) where T : Subscribable, IBelongAsset
+			=> listByAsset(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.asset);
+		public static string listByBillingProfile<T>(T cacheable) where T : Subscribable, IBelongBillingProfile
+			=> listByBillingProfile(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.profile);
+
+		public static string listByParent(Type type, ulong parentId) {
+			switch (type?.Name) {
+				case "CompanyGeneral":
+					return $"/companies/{parentId}/tree";
+			}
+			throw new KeyNotFoundException($"{type?.FullName} cannot be listed by parent Company");
+		}
 		public static string listByCompany(Type type, ulong companyId) {
 			switch (type?.Name) {
 				#region Company
@@ -40,17 +41,11 @@ namespace trakit.https {
 				#endregion Company
 
 				case "Contact":
-					return $"/companies/{companyId}/contacts/";
+					return $"/companies/{companyId}/contacts";
 
 				#region Billing
 				case "BillingProfile":
 					return $"/companies/{companyId}/billing/profiles";
-				case "BillableHostingRule":
-					return "/billing/profiles/{profileId}/rules";
-				case "BillableHostingLicense":
-					return "/billing/profiles/{profileId}/licenses";
-				case "BillingReport":
-					return "/billing/profiles/{profileId}/reports";
 				#endregion Billing
 
 				#region Behaviours
@@ -87,10 +82,10 @@ namespace trakit.https {
 				#endregion Messages
 
 				#region Dispatch
-				case "DispatchTask":
-					return $"/companies/{companyId}/assets/dispatch/tasks";
 				case "DispatchJob":
 					return $"/companies/{companyId}/assets/dispatch/jobs";
+				case "DispatchTask":
+					return $"/companies/{companyId}/assets/dispatch/tasks";
 				#endregion Dispatch
 
 				#region Reports
@@ -166,22 +161,24 @@ namespace trakit.https {
 					return $"/companies/{companyId}/users/groups";
 				case "Machine":
 					return $"/companies/{companyId}/machines";
-				#endregion Users and Groups
+					#endregion Users and Groups
 			}
-			throw new KeyNotFoundException("Unknown type: " + (type?.FullName ?? "{null}"));
+			throw new KeyNotFoundException($"{type?.FullName} cannot be listed by Company");
 		}
-
 		public static string listByAsset(Type type, ulong assetId) {
 			switch (type?.Name) {
 				case "AssetAlert":
 				case "AssetMessage":
 					return $"/assets/{assetId}/messages";
 
-				case "DispatchTask":
-					return $"/assets/{assetId}/assets/dispatch/tasks";
+				case "BehaviourLog":
+					return $"/behaviours/log?asset={assetId}";
+
 				case "DispatchJob":
 					return $"/assets/{assetId}/assets/dispatch/jobs";
-			
+				case "DispatchTask":
+					return $"/assets/{assetId}/assets/dispatch/tasks";
+
 				case "Picture":
 					return $"/assets/{assetId}/pictures";
 				case "Document":
@@ -196,18 +193,32 @@ namespace trakit.https {
 				case "MaintenanceJob":
 					return $"/assets/{assetId}/maintenance/jobs";
 			}
-			throw new KeyNotFoundException("Unknown type: " + (type?.FullName ?? "{null}"));
+			throw new KeyNotFoundException($"{type?.FullName} cannot be listed by Asset");
 		}
-		public static string listByBillingProfile(Type type, ulong billingProfileId) {
+		public static string listByBehaviour(Type type, ulong behaviourId) {
+			switch (type?.Name) {
+				case "BehaviourLog":
+					return $"/behaviours/{behaviourId}/log";
+			}
+			throw new KeyNotFoundException($"{type?.FullName} cannot be listed by Behaviour");
+		}
+		public static string listByBehaviourScript(Type type, ulong scriptId) {
+			switch (type?.Name) {
+				case "BehaviourLog":
+					return $"/behaviours/scripts/{scriptId}/log";
+			}
+			throw new KeyNotFoundException($"{type?.FullName} cannot be listed by BehaviourScript");
+		}
+		public static string listByBillingProfile(Type type, ulong profileId) {
 			switch (type?.Name) {
 				case "BillableHostingRule":
-					return "/billing/profiles/{profileId}/rules";
+					return $"/billing/profiles/{profileId}/rules";
 				case "BillableHostingLicense":
-					return "/billing/profiles/{profileId}/licenses";
+					return $"/billing/profiles/{profileId}/licenses";
 				case "BillingReport":
-					return "/billing/profiles/{profileId}/reports";
+					return $"/billing/profiles/{profileId}/reports";
 			}
-			throw new KeyNotFoundException("Unknown type: " + (type?.FullName ?? "{null}"));
+			throw new KeyNotFoundException($"{type?.FullName} cannot be listed by BillingProfile");
 		}
 	}
 }
