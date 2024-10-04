@@ -73,11 +73,14 @@ namespace trakit.https {
 			_sessionId = sessionId;
 		}
 
-
-
-
-
-
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <typeparam name="T"></typeparam>
+		/// <param name="method"></param>
+		/// <param name="path"></param>
+		/// <param name="body"></param>
+		/// <returns></returns>
 		async Task<TrakitRestfulResponse> _send<T>(HttpMethod method, string path, JObject body = default) where T : ResponseType {
 			_reqId++;
 			path = this.baseAddress.ToString() + path;
@@ -105,17 +108,31 @@ namespace trakit.https {
 			);
 		}
 
-		public Task<TrakitRestfulResponse> login(string username, string password, string userAgent = default) {
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="username"></param>
+		/// <param name="password"></param>
+		/// <param name="userAgent"></param>
+		/// <returns></returns>
+		public async Task<TrakitRestfulResponse> login(string username, string password, string userAgent = default) {
 			var body = new JObject(
 				new JProperty("username", username),
 				new JProperty("password", password)
 			);
 			if (userAgent != default) body["userAgent"] = userAgent;
-			return _send<RespSelfDetails>(
+			var response = await _send<RespSelfDetails>(
 				HttpMethod.Post,
 				"self/login",
 				body
 			);
+			if (
+				response.result is RespSelfDetails details
+				&& Guid.TryParse(details.ghostId, out Guid sessionId)
+			) {
+				this.setSessionId(sessionId);
+			}
+			return response;
 		}
 
 
