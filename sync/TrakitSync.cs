@@ -5,7 +5,7 @@ using trakit.wss;
 
 namespace trakit.sync {
 	/// <summary>
-	/// A class to help manage and synchronize <see cref="Subscribable"/> objects.
+	/// A class to help manage and synchronize <see cref="Component"/> objects.
 	/// </summary>
 	public class TrakitSync {
 		/// <summary>

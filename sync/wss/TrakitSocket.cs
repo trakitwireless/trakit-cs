@@ -308,17 +308,19 @@ namespace trakit.wss {
 		}
 		// sends the connection async, changes status to "opening", and starts sending/receiving tasks
 		async Task _connectSend(string uri) {
+			Task conn;
 			try {
-				var conn = this.client.ConnectAsync(new Uri(uri), _sauce.Token);
+				conn = this.client.ConnectAsync(new Uri(uri), _sauce.Token);
 				_onStatus(TrakitSocketStatus.opening);
 				await conn;
 			} catch {
 				_onStatus(TrakitSocketStatus.closed);
 				throw;
 			}
+			conn = _connecting();
 			_receiver = _receiving(_sauce.Token);
 			_sender = _sending(_sauce.Token);
-			await _connecting();
+			await conn;
 		}
 
 		/// <summary>
@@ -339,7 +341,7 @@ namespace trakit.wss {
 		/// <returns></returns>
 		public Task connect(Guid sessionId, IEnumerable<KeyValuePair<string, string>>? headers = null) {
 			_connectInit(headers);
-			return _connectSend(_connectUri() + "ghostId=" + sessionId);
+			return _connectSend(_connectUri() + $"ghostId={sessionId}");
 		}
 		/// <summary>
 		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="User"/> account.
@@ -348,9 +350,9 @@ namespace trakit.wss {
 		/// <param name="password"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(MailAddress username, string password, IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(string username, string password, IEnumerable<KeyValuePair<string, string>>? headers = null) {
 			_connectInit(headers);
-			return _connectSend(_connectUri() + "username=" + username.Address + "&password=" + password);
+			return _connectSend(_connectUri() + $"username={username}&password={password}");
 		}
 		/// <summary>
 		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="Machine"/> account.
@@ -362,16 +364,7 @@ namespace trakit.wss {
 		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>>? headers = null) {
 			_connectInit(headers);
 			var uri = _connectUri();
-			uri += "shadowKey=" + apiKey
-				+ "&shadowSig="
-				+ signatures.createHmacSignedInput(
-					apiKey,
-					apiSecret,
-					DateTime.UtcNow,
-					HttpMethod.Get,
-					new Uri(uri),
-					0
-				);
+			uri += $"shadowKey={apiKey}&shadowSig={signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri), 0)}";
 			return _connectSend(uri);
 		}
 		#endregion Initiate Connection

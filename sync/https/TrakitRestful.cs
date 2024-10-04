@@ -1,16 +1,12 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Http;
-using System.Net.WebSockets;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using trakit.hmac;
 using trakit.objects;
 using trakit.tools;
-using trakit.wss;
 
 namespace trakit.https {
 	/// <summary>
@@ -109,7 +105,7 @@ namespace trakit.https {
 			);
 		}
 
-		public Task<TrakitRestfulResponse> login(string username, string password, string userAgent = null) {
+		public Task<TrakitRestfulResponse> login(string username, string password, string userAgent = default) {
 			var body = new JObject(
 				new JProperty("username", username),
 				new JProperty("password", password)
@@ -125,27 +121,27 @@ namespace trakit.https {
 
 
 
-		public Task<TrakitRestfulResponse> get<T>(string key) where T : IRequestable {
+		//public Task<TrakitRestfulResponse> get<T>(string key) where T : IRequestable {
+			
+		//}
+		//public Task<TrakitRestfulResponse> list<T>(string key) where T : IRequestable {
 
-		}
-		public Task<TrakitRestfulResponse> list<T>(string key) where T : IRequestable {
+		//}
+		//public Task<TrakitRestfulResponse> merge<T>(string key, JObject body) where T : IRequestable {
 
-		}
-		public Task<TrakitRestfulResponse> merge<T>(string key, JObject body) where T : IRequestable {
+		//}
+		//public Task<TrakitRestfulResponse> delete<T>(string key) where T : IRequestable, IDeletable {
 
-		}
-		public Task<TrakitRestfulResponse> delete<T>(string key) where T : IRequestable, IDeletable {
+		//}
+		//public Task<TrakitRestfulResponse> restore<T>(string key) where T : IRequestable, IDeletable {
 
-		}
-		public Task<TrakitRestfulResponse> restore<T>(string key) where T : IRequestable, IDeletable {
+		//}
+		//public Task<TrakitRestfulResponse> suspend<T>(string key) where T : IRequestable, ISuspendable {
 
-		}
-		public Task<TrakitRestfulResponse> suspend<T>(string key) where T : IRequestable, ISuspendable {
+		//}
+		//public Task<TrakitRestfulResponse> revive<T>(string key) where T : IRequestable, ISuspendable {
 
-		}
-		public Task<TrakitRestfulResponse> revive<T>(string key) where T : IRequestable, ISuspendable {
-
-		}
+		//}
 
 	}
 }

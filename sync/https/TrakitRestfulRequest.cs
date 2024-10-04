@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using trakit.objects;
 
 namespace trakit.https {
@@ -7,13 +8,13 @@ namespace trakit.https {
 	/// 
 	/// </summary>
 	public class TrakitRestfulRequest {
-		public static string listByParent<T>(T cacheable) where T : Subscribable, IAmCompany
+		public static string listByParent<T>(T cacheable) where T : Component, IAmCompany
 			=> listByParent(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.id);
-		public static string listByCompany<T>(T cacheable) where T : Subscribable, IBelongCompany
+		public static string listByCompany<T>(T cacheable) where T : Component, IBelongCompany
 			=> listByCompany(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.company);
-		public static string listByAsset<T>(T cacheable) where T : Subscribable, IBelongAsset
+		public static string listByAsset<T>(T cacheable) where T : Component, IBelongAsset
 			=> listByAsset(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.asset);
-		public static string listByBillingProfile<T>(T cacheable) where T : Subscribable, IBelongBillingProfile
+		public static string listByBillingProfile<T>(T cacheable) where T : Component, IBelongBillingProfile
 			=> listByBillingProfile(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.profile);
 
 		public static string listByParent(Type type, ulong parentId) {
@@ -220,5 +221,10 @@ namespace trakit.https {
 			}
 			throw new KeyNotFoundException($"{type?.FullName} cannot be listed by BillingProfile");
 		}
+
+
+		public HttpMethod method;
+		public string path;
+		public ParameterType parameters;
 	}
 }
