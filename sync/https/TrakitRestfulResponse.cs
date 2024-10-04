@@ -8,7 +8,7 @@ namespace trakit.https {
 	/// <summary>
 	/// 
 	/// </summary>
-	public class TrakitRestfulResponse {
+	public class TrakitRestfulResponse<T> where T : ResponseType {
 		/// <summary>
 		/// 
 		/// </summary>
@@ -16,9 +16,9 @@ namespace trakit.https {
 		/// <summary>
 		/// 
 		/// </summary>
-		public readonly ResponseType result;
+		public readonly T result;
 
-		public TrakitRestfulResponse(HttpResponseMessage response, ResponseType result) {
+		public TrakitRestfulResponse(HttpResponseMessage response, T result) {
 			this.response = response;
 			this.result = result;
 		}
