@@ -1,20 +1,21 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
-    <RootNamespace>trakit</RootNamespace>
-    <Nullable>enable</Nullable>
-    <AssemblyName>trakit.$(MSBuildProjectName)</AssemblyName>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\trakit-dotnet\commands\commands.csproj" />
-    <ProjectReference Include="..\..\trakit-dotnet\objects\objects.csproj" />
-    <ProjectReference Include="..\..\trakit-dotnet\tools\tools.csproj" />
-  </ItemGroup>
-
+	<PropertyGroup>
+		<TargetFramework>netstandard2.1</TargetFramework>
+		<RootNamespace>trakit</RootNamespace>
+		<Nullable>enable</Nullable>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<Title>Trak-iT API Synchronization</Title>
+		<PackageProjectUrl>https://apis.trakit.ca/dotnet</PackageProjectUrl>
+		<AssemblyName>trakit.$(MSBuildProjectName)</AssemblyName>
+		<AssemblyVersion>0.1.0.0</AssemblyVersion>
+		<FileVersion>0.1.0.0</FileVersion>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\..\trakit-dotnet\commands\commands.csproj" />
+		<ProjectReference Include="..\..\trakit-dotnet\objects\objects.csproj" />
+		<ProjectReference Include="..\..\trakit-dotnet\tools\tools.csproj" />
+	</ItemGroup>
 </Project>
