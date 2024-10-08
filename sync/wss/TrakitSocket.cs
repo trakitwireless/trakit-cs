@@ -3,12 +3,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
-using System.Net.Mail;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web;
 using trakit.commands;
 using trakit.hmac;
 using trakit.objects;
@@ -352,7 +352,7 @@ namespace trakit.wss {
 		/// <returns></returns>
 		public Task connect(string username, string password, IEnumerable<KeyValuePair<string, string>> headers = null) {
 			_connectInit(headers);
-			return _connectSend(_connectUri() + $"username={username}&password={password}");
+			return _connectSend(_connectUri() + $"username={username}&password={HttpUtility.UrlEncode(password)}");
 		}
 		/// <summary>
 		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="Machine"/> account.

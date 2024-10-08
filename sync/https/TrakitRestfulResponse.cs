@@ -1,14 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net;
-using System.Net.Http;
+﻿using System.Net.Http;
 using trakit.objects;
 
 namespace trakit.https {
 	/// <summary>
 	/// 
 	/// </summary>
-	public class TrakitRestfulResponse<T> where T : ResponseType {
+	public class TrakitRestfulResponse<TResponse> where TResponse : ResponseType {
 		/// <summary>
 		/// 
 		/// </summary>
@@ -16,9 +13,9 @@ namespace trakit.https {
 		/// <summary>
 		/// 
 		/// </summary>
-		public readonly T result;
+		public readonly TResponse result;
 
-		public TrakitRestfulResponse(HttpResponseMessage response, T result) {
+		public TrakitRestfulResponse(HttpResponseMessage response, TResponse result) {
 			this.response = response;
 			this.result = result;
 		}

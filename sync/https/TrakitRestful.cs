@@ -2,6 +2,7 @@
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using trakit.commands;
 using trakit.hmac;
 using trakit.objects;
@@ -90,19 +91,17 @@ namespace trakit.https {
 		#endregion Authorization
 
 		/// <summary>
-		/// Sends an HTTPS <see cref="HttpRequestMessage"/> to the server and awaits a <see cref="HttpResponseMessage"/>.
+		/// 
 		/// </summary>
-		/// <typeparam name="T">The <see cref="ParameterType"/> for the given request.</typeparam>
 		/// <param name="method"></param>
 		/// <param name="path"></param>
 		/// <param name="parms"></param>
 		/// <returns></returns>
-		public async Task<TrakitRestfulResponse<T>> send<T>(HttpMethod method, string path, ParameterType parms = default) where T : ResponseType {
+		Task<HttpResponseMessage> _raw(HttpMethod method, string path, JToken parms = default) {
 			_reqId++;
-			path = $"{this.baseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
 			var request = new HttpRequestMessage(method, path);
+			path = $"{this.baseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
 			if (parms != default) {
-				parms.reqId = _reqId;
 				request.Content = new StringContent(
 					this.serializer.serialize(parms),
 					Encoding.UTF8,
@@ -113,15 +112,37 @@ namespace trakit.https {
 			}
 			if (_machine?.secret?.Length != 0) {
 				request.RequestUri = new Uri(path);
-				signatures.createHmacHeader(request, _machine);
+				signatures.addHmacHeader(request, _machine);
 			} else if (_sessionId != default) {
 				request.RequestUri = new Uri(path + $"{(!path.Contains("?") ? "?" : "&")}ghostId={_sessionId}");
 			}
-			var response = await this.client.SendAsync(request);
-			return new TrakitRestfulResponse<T>(
+			return this.client.SendAsync(request);
+		}
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <typeparam name="TResponse">The <see cref="ResponseType"/> for the given request.</typeparam>
+		/// <param name="method"></param>
+		/// <param name="path"></param>
+		/// <param name="parms"></param>
+		/// <returns></returns>
+		public async Task<TrakitRestfulResponse<TResponse>> send<TResponse>(HttpMethod method, string path, ParameterType parms = default) where TResponse : ResponseType {
+			var response = await _raw(method, path, JObject.FromObject(parms));
+			return new TrakitRestfulResponse<TResponse>(
 				response,
-				this.serializer.deserialize<T>(await response.Content.ReadAsStringAsync())
+				this.serializer.deserialize<TResponse>(await response.Content.ReadAsStringAsync())
 			);
+		}
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="method"></param>
+		/// <param name="path"></param>
+		/// <param name="parms"></param>
+		/// <returns></returns>
+		public async Task<TJson> send<TJson>(HttpMethod method, string path, TJson parms = default) where TJson : JToken {
+			var response = await _raw(method, path, parms);
+			return this.serializer.deserialize<TJson>(await response.Content.ReadAsStringAsync());
 		}
 
 		/// <summary>
@@ -142,7 +163,8 @@ namespace trakit.https {
 				"self/login",
 				body
 			);
-			if (Guid.TryParse(response.result.ghostId, out Guid sessionId)) {
+			this.session = response.result;
+			if (response.result.errorCode == ErrorCode.success && Guid.TryParse(response.result.ghostId, out Guid sessionId)) {
 				this.setAuth(sessionId);
 			}
 			return response;

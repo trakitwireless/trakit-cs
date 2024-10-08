@@ -138,7 +138,7 @@ namespace trakit.hmac {
 		/// <param name="request"></param>
 		/// <param name="machine"></param>
 		/// <returns></returns>
-		public static AuthenticationHeaderValue createHmacHeader(HttpRequestMessage request, Machine machine)
+		public static AuthenticationHeaderValue addHmacHeader(HttpRequestMessage request, Machine machine)
 			=> request.Headers.Authorization = signatures.createHmacHeader(
 				machine.key,
 				machine.secret,
