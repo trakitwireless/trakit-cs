@@ -102,6 +102,7 @@ namespace trakit.https {
 			var request = new HttpRequestMessage(method, path);
 			path = $"{this.baseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
 			if (parms != default) {
+				parms["reqId"] = _reqId;
 				request.Content = new StringContent(
 					this.serializer.serialize(parms),
 					Encoding.UTF8,
@@ -140,7 +141,7 @@ namespace trakit.https {
 		/// <param name="path"></param>
 		/// <param name="parms"></param>
 		/// <returns></returns>
-		public async Task<TJson> send<TJson>(HttpMethod method, string path, TJson parms = default) where TJson : JToken {
+		public async Task<TJson> send<TJson>(HttpMethod method, string path, JObject parms = default) where TJson : JObject {
 			var response = await _raw(method, path, parms);
 			return this.serializer.deserialize<TJson>(await response.Content.ReadAsStringAsync());
 		}

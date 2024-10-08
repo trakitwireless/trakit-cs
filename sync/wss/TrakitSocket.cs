@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
+using Newtonsoft.Json.Linq;
 using trakit.commands;
 using trakit.hmac;
 using trakit.objects;
@@ -435,13 +436,56 @@ namespace trakit.wss {
 
 			// let's track this request.
 			parameters.reqId = ++_reqId;
-			var message = new TrakitSocketMessage(name, this.serializer.serialize(parameters));
+			var outbound = new TrakitSocketMessage(name, this.serializer.serialize(parameters));
 
 			var sauce = new TaskCompletionSource<TResponse>();
 			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
-				if (received.name == message.name + SUFFIX) {
-					var response = this.serializer.deserialize<TResponse>(message.body);
+				if (received.name == outbound.name + SUFFIX) {
+					var response = this.serializer.deserialize<TResponse>(received.body);
 					if (response.reqId == parameters.reqId) {
+						this.StatusChanged -= handleDis;
+						this.MessageReceived -= handleMsg;
+						sauce.SetResult(response);
+					}
+				}
+			}
+			void handleDis(TrakitSocket sender) {
+				switch (this.status) {
+					case TrakitSocketStatus.closing:
+					case TrakitSocketStatus.closed:
+						this.MessageReceived -= handleMsg;
+						this.StatusChanged -= handleDis;
+						sauce.SetCanceled();
+						break;
+				}
+			};
+			this.StatusChanged += handleDis;
+			this.MessageReceived += handleMsg;
+
+			// add to outgoing queue
+			_outgoing.TryAdd(outbound, -1, _sauce.Token);
+			return sauce.Task;
+		}
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <typeparam name="TJson"></typeparam>
+		/// <param name="name"></param>
+		/// <param name="parameters"></param>
+		/// <returns></returns>
+		/// <exception cref="InvalidOperationException"></exception>
+		public Task<TJson> command<TJson>(string name, JObject parameters) where TJson : JObject {
+			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+
+			// let's track this request.
+			parameters["reqId"] = ++_reqId;
+			var message = new TrakitSocketMessage(name, this.serializer.serialize(parameters));
+
+			var sauce = new TaskCompletionSource<TJson>();
+			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
+				if (received.name == message.name + SUFFIX) {
+					var response = this.serializer.deserialize<TJson>(received.body);
+					if (response["reqId"] == parameters["reqId"]) {
 						this.StatusChanged -= handleDis;
 						this.MessageReceived -= handleMsg;
 						sauce.SetResult(response);
