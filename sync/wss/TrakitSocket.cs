@@ -83,11 +83,11 @@ namespace trakit.wss {
 			this.baseAddress = baseAddress;
 		}
 		public void Dispose() {
-			var client = this.client;
+			var wss = this.client;
 			_sauce?.Cancel();
 			this.client = null;
-			client?.Abort();
-			client?.Dispose();
+			wss?.Abort();
+			wss?.Dispose();
 		}
 
 		#region Handling Disconnect
@@ -472,8 +472,8 @@ namespace trakit.wss {
 		/// <param name="company"></param>
 		/// <param name="subscriptions"></param>
 		/// <returns></returns>
-		public Task<SubscriptionResponse> subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.command<SubscriptionResponse>("subscribe", new SubscriptionRequest() {
+		public Task<RespSubscription> subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
+			=> this.command<RespSubscription>("subscribe", new ReqSubscription() {
 				company = new ParamId() { id = company },
 				subscriptionTypes = subscriptions.ToList()
 			});
@@ -483,8 +483,8 @@ namespace trakit.wss {
 		/// <param name="company"></param>
 		/// <param name="subscriptions"></param>
 		/// <returns></returns>
-		public Task<SubscriptionResponse> unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.command<SubscriptionResponse>("unsubscribe", new SubscriptionRequest() {
+		public Task<RespSubscription> unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
+			=> this.command<RespSubscription>("unsubscribe", new ReqSubscription() {
 				company = new ParamId() { id = company },
 				subscriptionTypes = subscriptions.ToList()
 			});
@@ -492,8 +492,8 @@ namespace trakit.wss {
 		/// Gets the list of current subscriptions for the <see cref="client"/>.
 		/// </summary>
 		/// <returns></returns>
-		public Task<SubscriptionListResponse> subscriptionList()
-			=> this.command<SubscriptionListResponse>("getSubscriptionsList", new RequestBlank());
+		public Task<RespSubscriptionList> subscriptionList()
+			=> this.command<RespSubscriptionList>("getSubscriptionsList", new ReqBlank());
 		#endregion Commands
 
 		#region Events

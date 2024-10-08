@@ -12,7 +12,7 @@ namespace trakit.wss {
 		public WebSocketCloseStatus reason;
 
 		public TrakitSocketException(
-					string message,
+			string message,
 			WebSocketCloseStatus reason,
 			Exception? inner = null
 		) : base(message, inner) {

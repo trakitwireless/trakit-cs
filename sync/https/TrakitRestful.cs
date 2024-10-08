@@ -1,9 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
+using trakit.commands;
 using trakit.hmac;
 using trakit.objects;
 using trakit.tools;
@@ -39,7 +38,7 @@ namespace trakit.https {
 		/// <summary>
 		/// The underlying client making HTTPS requests.
 		/// </summary>
-		public HttpClient client { get; private set; }
+		public HttpClient client { get; private set; } = new HttpClient();
 		/// <summary>
 		/// Details of the <see cref="User"/> or <see cref="Machine"/> whose <see cref="Session"/> is connected to the <see cref="client"/>.
 		/// </summary>
@@ -52,50 +51,67 @@ namespace trakit.https {
 		public TrakitRestful() : this(new Uri(URI_PROD)) { }
 		public TrakitRestful(Uri baseAddress) {
 			this.baseAddress = baseAddress;
-			this.client = new HttpClient();
 		}
 		public void Dispose() {
-			var client = this.client;
+			var http = this.client;
 			this.client = null;
-			client?.CancelPendingRequests();
-			client?.Dispose();
+			http?.CancelPendingRequests();
+			http?.Dispose();
 		}
 
-
+		#region Authorization
+		// saved API credentials when using a service account
 		Machine _machine;
+		// saved session identifier when using a user account
 		Guid _sessionId;
-		public void setMachine(Machine machine) {
+		/// <summary>
+		/// Saves the authentication mechanism as a <see cref="Machine"/>.
+		/// </summary>
+		/// <param name="machine"></param>
+		public void setAuth(Machine machine) {
+			this.setAuth();
 			_machine = machine;
-			_sessionId = default;
 		}
-		public void setSessionId(Guid sessionId) {
-			_machine = default;
+		/// <summary>
+		/// Saves the authentication mechanism as a <see cref="Session.id"/>.
+		/// </summary>
+		/// <param name="sessionId"></param>
+		public void setAuth(Guid sessionId) {
+			this.setAuth();
 			_sessionId = sessionId;
 		}
+		/// <summary>
+		/// Unsets the authentication mechanism so that requests are sent without any.
+		/// </summary>
+		public void setAuth() {
+			_machine = default;
+			_sessionId = default;
+		}
+		#endregion Authorization
 
 		/// <summary>
-		/// 
+		/// Sends an HTTPS <see cref="HttpRequestMessage"/> to the server and awaits a <see cref="HttpResponseMessage"/>.
 		/// </summary>
-		/// <typeparam name="T"></typeparam>
+		/// <typeparam name="T">The <see cref="ParameterType"/> for the given request.</typeparam>
 		/// <param name="method"></param>
 		/// <param name="path"></param>
-		/// <param name="body"></param>
+		/// <param name="parms"></param>
 		/// <returns></returns>
-		async Task<TrakitRestfulResponse<T>> _send<T>(HttpMethod method, string path, JObject body = default) where T : ResponseType {
+		public async Task<TrakitRestfulResponse<T>> send<T>(HttpMethod method, string path, ParameterType parms = default) where T : ResponseType {
 			_reqId++;
-			path = this.baseAddress.ToString() + path;
-			var request = new HttpRequestMessage(HttpMethod.Post, path);
-			if (body != default) {
-				if (!((IDictionary<string, JToken>)body).ContainsKey("reqId")) {
-					body["reqId"] = _reqId;
-				}
+			path = $"{this.baseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
+			var request = new HttpRequestMessage(method, path);
+			if (parms != default) {
+				parms.reqId = _reqId;
 				request.Content = new StringContent(
-					this.serializer.serialize(body),
+					this.serializer.serialize(parms),
 					Encoding.UTF8,
 					"text/json"
 				);
+			} else {
+				path += $"{(!path.Contains("?") ? "?" : "&")}reqId={_reqId}";
 			}
-			if (_machine != default) {
+			if (_machine?.secret?.Length != 0) {
 				request.RequestUri = new Uri(path);
 				signatures.createHmacHeader(request, _machine);
 			} else if (_sessionId != default) {
@@ -109,53 +125,27 @@ namespace trakit.https {
 		}
 
 		/// <summary>
-		/// 
+		/// Sends a login command, and if successful, saves the <see cref="RespSelfDetails.ghostId"/> as the authentication mechanism for all further requests.
 		/// </summary>
 		/// <param name="username"></param>
 		/// <param name="password"></param>
 		/// <param name="userAgent"></param>
 		/// <returns></returns>
 		public async Task<TrakitRestfulResponse<RespSelfDetails>> login(string username, string password, string userAgent = default) {
-			var body = new JObject(
-				new JProperty("username", username),
-				new JProperty("password", password)
-			);
-			if (userAgent != default) body["userAgent"] = userAgent;
-			var response = await _send<RespSelfDetails>(
+			var body = new ReqLogin() {
+				username = username,
+				password = password,
+			};
+			if (userAgent != default) body.userAgent = userAgent;
+			var response = await this.send<RespSelfDetails>(
 				HttpMethod.Post,
 				"self/login",
 				body
 			);
 			if (Guid.TryParse(response.result.ghostId, out Guid sessionId)) {
-				this.setSessionId(sessionId);
+				this.setAuth(sessionId);
 			}
 			return response;
 		}
-
-
-
-
-		//public Task<TrakitRestfulResponse> get<T>(string key) where T : IRequestable {
-			
-		//}
-		//public Task<TrakitRestfulResponse> list<T>(string key) where T : IRequestable {
-
-		//}
-		//public Task<TrakitRestfulResponse> merge<T>(string key, JObject body) where T : IRequestable {
-
-		//}
-		//public Task<TrakitRestfulResponse> delete<T>(string key) where T : IRequestable, IDeletable {
-
-		//}
-		//public Task<TrakitRestfulResponse> restore<T>(string key) where T : IRequestable, IDeletable {
-
-		//}
-		//public Task<TrakitRestfulResponse> suspend<T>(string key) where T : IRequestable, ISuspendable {
-
-		//}
-		//public Task<TrakitRestfulResponse> revive<T>(string key) where T : IRequestable, ISuspendable {
-
-		//}
-
 	}
 }
