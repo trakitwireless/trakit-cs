@@ -279,7 +279,7 @@ namespace trakit.wss {
 			return endpoint + (endpoint.Contains("?") ? "&" : "?");
 		}
 		// instantiates a new ClientWebSocket, and associated class needed to run processes
-		void _connectInit(IEnumerable<KeyValuePair<string, string>>? headers) {
+		void _connectInit(IEnumerable<KeyValuePair<string, string>> headers) {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
 			this.client = new ClientWebSocket();
@@ -329,7 +329,7 @@ namespace trakit.wss {
 		/// <param name="sessionId"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(IEnumerable<KeyValuePair<string, string>> headers = null) {
 			_connectInit(headers);
 			return _connectSend(_connectUri());
 		}
@@ -339,7 +339,7 @@ namespace trakit.wss {
 		/// <param name="sessionId"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(Guid sessionId, IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(Guid sessionId, IEnumerable<KeyValuePair<string, string>> headers = null) {
 			_connectInit(headers);
 			return _connectSend(_connectUri() + $"ghostId={sessionId}");
 		}
@@ -350,7 +350,7 @@ namespace trakit.wss {
 		/// <param name="password"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(string username, string password, IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(string username, string password, IEnumerable<KeyValuePair<string, string>> headers = null) {
 			_connectInit(headers);
 			return _connectSend(_connectUri() + $"username={username}&password={password}");
 		}
@@ -361,7 +361,7 @@ namespace trakit.wss {
 		/// <param name="apiSecret"><see cref="Machine.secret"/> as bytes from <see cref="Encoding.UTF8"/></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>>? headers = null) {
+		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>> headers = null) {
 			_connectInit(headers);
 			var uri = _connectUri();
 			uri += $"shadowKey={apiKey}&shadowSig={signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri), 0)}";
