@@ -109,7 +109,6 @@ namespace trakit.wss {
 		Task _shutter;
 		// handles the disconnect, disposes of resources, and awaits tasks doing send/receive
 		async Task _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
-			this.MessageReceived -= _receivingFirstMessage;
 			_sauce.Cancel();
 			_outgoing.CompleteAdding();
 			try { await _sender; } catch { } finally { _sender?.Dispose(); }
@@ -125,6 +124,7 @@ namespace trakit.wss {
 			_receiver =
 			_sender =
 			_shutter = null;
+			_first = true;
 
 			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
 		}
@@ -134,6 +134,10 @@ namespace trakit.wss {
 		const int BUFFER = 1024 * 1024;
 		// task to handle incoming messages and server-side disconnections
 		Task _receiver;
+		// before we receive the connectionResponse message, the socket is in an unstable state
+		// and can end the session if a command is sent
+		// so we only mark this wrapper as "open" when the underlying connection is open, and we've received this message.
+		bool _first = true;
 		// handles incoming messages and server initiated disconnections.
 		async Task _receiving(CancellationToken ct) {
 			string closeMessage = BYEBYE;
@@ -150,10 +154,13 @@ namespace trakit.wss {
 
 					switch (received.MessageType) {
 						case WebSocketMessageType.Text:
-							this.MessageReceived?.Invoke(
-								this,
-								new TrakitSocketMessage(message)
-							);
+							var msg = new TrakitSocketMessage(message);
+							if (_first && msg.name == "connectionResponse") {
+								_first = false;
+								this.session = this.serializer.deserialize<RespSelfDetails>(msg.body);
+								_onStatus(TrakitSocketStatus.open);
+							}
+							this.MessageReceived?.Invoke(this, msg);
 							break;
 						case WebSocketMessageType.Close:
 							_onStatus(TrakitSocketStatus.closing);
@@ -187,16 +194,6 @@ namespace trakit.wss {
 				}
 			}
 			_shutdown(closeMessage, closeReason);
-		}
-		// before we receive the connectionResponse message, the socket is in an unstable state
-		// and can end the session if a command is sent
-		// so we only mark this wrapper as "open" when the underlying connection is open, and we've received this message.
-		void _receivingFirstMessage(TrakitSocket sender, TrakitSocketMessage message) {
-			if (message.name == "connectionResponse") {
-				this.MessageReceived -= _receivingFirstMessage;
-				this.session = this.serializer.deserialize<RespSelfDetails>(message.body);
-				_onStatus(TrakitSocketStatus.open);
-			}
 		}
 		#endregion Receiving Messages
 		#region Sending Messages
@@ -277,7 +274,7 @@ namespace trakit.wss {
 		// returns a clean Trak-iT socket address
 		string _connectUri() {
 			var endpoint = this.baseAddress.AbsoluteUri.TrimEnd('?', '/', '&');
-			return endpoint + (endpoint.Contains("?") ? "&" : "?");
+			return endpoint + (endpoint.Contains("?") ? "&" : "/?");
 		}
 		// instantiates a new ClientWebSocket, and associated class needed to run processes
 		void _connectInit(IEnumerable<KeyValuePair<string, string>> headers) {
@@ -291,7 +288,6 @@ namespace trakit.wss {
 					this.client.Options.SetRequestHeader(pair.Key, pair.Value);
 				}
 			}
-			this.MessageReceived += _receivingFirstMessage;
 		}
 		// an awaitable task which completes upon disconnection
 		Task _connecting() {
@@ -309,9 +305,8 @@ namespace trakit.wss {
 		}
 		// sends the connection async, changes status to "opening", and starts sending/receiving tasks
 		async Task _connectSend(string uri, CancellationToken? ct = null) {
-			Task conn;
 			try {
-				conn = this.client.ConnectAsync(
+				var conn = this.client.ConnectAsync(
 					new Uri(uri),
 					ct.HasValue
 						? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value).Token
@@ -319,14 +314,14 @@ namespace trakit.wss {
 				);
 				_onStatus(TrakitSocketStatus.opening);
 				await conn;
+				conn = _connecting();
+				_receiver = Task.Run(() => _receiving(_sauce.Token));
+				_sender = Task.Run(() => _sending(_sauce.Token));
+				await conn;
 			} catch {
 				_onStatus(TrakitSocketStatus.closed);
 				throw;
 			}
-			conn = _connecting();
-			_receiver = _receiving(_sauce.Token);
-			_sender = _sending(_sauce.Token);
-			await conn;
 		}
 
 		/// <summary>
@@ -377,7 +372,7 @@ namespace trakit.wss {
 		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
 			_connectInit(headers);
 			var uri = _connectUri();
-			uri += $"shadowKey={apiKey}&shadowSig={signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri), 0)}";
+			uri += $"shadowKey={apiKey}&shadowSig={HttpUtility.UrlEncode(signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri.TrimEnd('?')), 0))}";
 			return _connectSend(uri, ct);
 		}
 		#endregion Initiate Connection

@@ -77,7 +77,7 @@ namespace trakit.wss {
 		/// <param name="index"></param>
 		/// <param name="count"></param>
 		/// <returns></returns>
-		public string decode(int index, int count) => Encoding.UTF8.GetString(this.content, index, count);
+		public string decode(int index, int count) => Encoding.UTF8.GetString(this.content, index, count - index);
 		/// <summary>
 		/// Returns a string that represents the message in "<see cref="name"/> <see cref="body"/>" format.
 		/// </summary>
