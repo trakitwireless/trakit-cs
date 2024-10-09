@@ -112,8 +112,8 @@ namespace trakit.wss {
 			this.MessageReceived -= _receivingFirstMessage;
 			_sauce.Cancel();
 			_outgoing.CompleteAdding();
-			try { await _sender; } catch { } finally { _sender.Dispose(); }
-			try { await _receiver; } catch { } finally { _receiver.Dispose(); }
+			try { await _sender; } catch { } finally { _sender?.Dispose(); }
+			try { await _receiver; } catch { } finally { _receiver?.Dispose(); }
 			_outgoing.Dispose();
 			_outgoing = null;
 			_sauce.Dispose();
@@ -281,7 +281,7 @@ namespace trakit.wss {
 		}
 		// instantiates a new ClientWebSocket, and associated class needed to run processes
 		void _connectInit(IEnumerable<KeyValuePair<string, string>> headers) {
-			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+			if (this.status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.status}.");
 
 			this.client = new ClientWebSocket();
 			_sauce = new CancellationTokenSource();
@@ -308,10 +308,15 @@ namespace trakit.wss {
 			return sauce.Task;
 		}
 		// sends the connection async, changes status to "opening", and starts sending/receiving tasks
-		async Task _connectSend(string uri) {
+		async Task _connectSend(string uri, CancellationToken? ct = null) {
 			Task conn;
 			try {
-				conn = this.client.ConnectAsync(new Uri(uri), _sauce.Token);
+				conn = this.client.ConnectAsync(
+					new Uri(uri),
+					ct.HasValue
+						? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value).Token
+						: _sauce.Token
+				);
 				_onStatus(TrakitSocketStatus.opening);
 				await conn;
 			} catch {
@@ -330,9 +335,9 @@ namespace trakit.wss {
 		/// <param name="sessionId"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(IEnumerable<KeyValuePair<string, string>> headers = null) {
+		public Task connect(IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
 			_connectInit(headers);
-			return _connectSend(_connectUri());
+			return _connectSend(_connectUri(), ct);
 		}
 		/// <summary>
 		/// Resumes a <see cref="WebSocket"/> connection for an existing <see cref="Session"/>.
@@ -340,9 +345,9 @@ namespace trakit.wss {
 		/// <param name="sessionId"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(Guid sessionId, IEnumerable<KeyValuePair<string, string>> headers = null) {
+		public Task connect(Guid sessionId, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
 			_connectInit(headers);
-			return _connectSend(_connectUri() + $"ghostId={sessionId}");
+			return _connectSend(_connectUri() + $"ghostId={sessionId}", ct);
 		}
 		/// <summary>
 		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="User"/> account.
@@ -351,22 +356,29 @@ namespace trakit.wss {
 		/// <param name="password"></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(string username, string password, IEnumerable<KeyValuePair<string, string>> headers = null) {
+		public Task connect(string username, string password, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
 			_connectInit(headers);
-			return _connectSend(_connectUri() + $"username={username}&password={HttpUtility.UrlEncode(password)}");
+			return _connectSend(_connectUri() + $"username={username}&password={HttpUtility.UrlEncode(password)}", ct);
 		}
 		/// <summary>
 		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="Machine"/> account.
+		/// </summary>
+		/// <param name="machine"></param>
+		/// <param name="headers"></param>
+		/// <returns></returns>
+		public Task connect(Machine machine, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) => this.connect(machine.key, Convert.FromBase64String(machine.secret), headers, ct);
+		/// <summary>
+		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="Machine"/>'s <see cref="Machine.key"/> and <see cref="Machine.secret"/>.
 		/// </summary>
 		/// <param name="apiKey"><see cref="Machine.key"/></param>
 		/// <param name="apiSecret"><see cref="Machine.secret"/> as bytes from <see cref="Encoding.UTF8"/></param>
 		/// <param name="headers"></param>
 		/// <returns></returns>
-		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>> headers = null) {
+		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
 			_connectInit(headers);
 			var uri = _connectUri();
 			uri += $"shadowKey={apiKey}&shadowSig={signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri), 0)}";
-			return _connectSend(uri);
+			return _connectSend(uri, ct);
 		}
 		#endregion Initiate Connection
 		#region Initiate Disconnection
@@ -412,7 +424,7 @@ namespace trakit.wss {
 			return _disconnecting();
 		}
 		#endregion Initiate Disconnection
-		#region Commands
+		#region Sending Commands
 		// command name reply suffix
 		const string SUFFIX = "Response";
 		/// <summary>
@@ -538,7 +550,7 @@ namespace trakit.wss {
 		/// <returns></returns>
 		public Task<RespSubscriptionList> subscriptionList()
 			=> this.command<RespSubscriptionList>("getSubscriptionsList", new ReqBlank());
-		#endregion Commands
+		#endregion Sending Commands
 
 		#region Events
 		/// <summary>
