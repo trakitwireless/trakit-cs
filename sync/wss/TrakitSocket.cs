@@ -526,7 +526,7 @@ namespace trakit.wss {
 		public Task<RespSubscription> subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
 			=> this.command<RespSubscription>("subscribe", new ReqSubscription() {
 				company = new ParamId() { id = company },
-				subscriptionTypes = subscriptions.ToList()
+				subscriptionTypes = subscriptions.ToArray()
 			});
 		/// <summary>
 		/// Unsubscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.
@@ -537,7 +537,7 @@ namespace trakit.wss {
 		public Task<RespSubscription> unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
 			=> this.command<RespSubscription>("unsubscribe", new ReqSubscription() {
 				company = new ParamId() { id = company },
-				subscriptionTypes = subscriptions.ToList()
+				subscriptionTypes = subscriptions.ToArray()
 			});
 		/// <summary>
 		/// Gets the list of current subscriptions for the <see cref="client"/>.
