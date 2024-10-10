@@ -139,7 +139,8 @@ namespace trakit.wss {
 		// so we only mark this wrapper as "open" when the underlying connection is open, and we've received this message.
 		bool _first = true;
 		// handles incoming messages and server initiated disconnections.
-		async Task _receiving(CancellationToken ct) {
+		async Task _receiving() {
+			var ct = _sauce.Token;
 			string closeMessage = BYEBYE;
 			WebSocketCloseStatus closeReason = WebSocketCloseStatus.NormalClosure;
 			while (!ct.IsCancellationRequested && this.client?.State == WebSocketState.Open) {
@@ -204,7 +205,8 @@ namespace trakit.wss {
 		// a specific message to close the underlying connection immediately instead of waiting for the outgoing queue to clear
 		TrakitSocketMessage _closer;
 		// handles sending messages to the server, and initiating client requested disconnections
-		async Task _sending(CancellationToken ct) {
+		async Task _sending() {
+			var ct = _sauce.Token;
 			string closeMessage = BYEBYE;
 			WebSocketCloseStatus closeReason = WebSocketCloseStatus.NormalClosure;
 			try {
@@ -315,8 +317,8 @@ namespace trakit.wss {
 				_onStatus(TrakitSocketStatus.opening);
 				await conn;
 				conn = _connecting();
-				_receiver = Task.Run(() => _receiving(_sauce.Token));
-				_sender = Task.Run(() => _sending(_sauce.Token));
+				_receiver = Task.Run(_receiving, _sauce.Token);
+				_sender = Task.Run(_sending, _sauce.Token);
 				await conn;
 			} catch {
 				_onStatus(TrakitSocketStatus.closed);
