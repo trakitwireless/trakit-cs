@@ -8,7 +8,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
 using trakit.hmac;
@@ -90,6 +89,36 @@ namespace trakit.wss {
 			wss?.Abort();
 			wss?.Dispose();
 		}
+
+		#region Authorization
+		// saved API credentials when using a service account
+		Machine _machine;
+		// saved session identifier when using a user account
+		Guid _sessionId;
+		/// <summary>
+		/// Saves the authentication mechanism as a <see cref="Machine"/>.
+		/// </summary>
+		/// <param name="machine"></param>
+		public void setAuth(Machine machine) {
+			this.setAuth();
+			_machine = machine;
+		}
+		/// <summary>
+		/// Saves the authentication mechanism as a <see cref="Session.id"/>.
+		/// </summary>
+		/// <param name="sessionId"></param>
+		public void setAuth(Guid sessionId) {
+			this.setAuth();
+			_sessionId = sessionId;
+		}
+		/// <summary>
+		/// Unsets the authentication mechanism so that requests are sent without any.
+		/// </summary>
+		public void setAuth() {
+			_machine = default;
+			_sessionId = default;
+		}
+		#endregion Authorization
 
 		#region Handling Disconnect
 		// generic disconnect message
@@ -329,13 +358,60 @@ namespace trakit.wss {
 		/// <summary>
 		/// Initiates a new <see cref="WebSocket"/> connection.
 		/// </summary>
-		/// <param name="sessionId"></param>
 		/// <param name="headers"></param>
+		/// <param name="ct"></param>
 		/// <returns></returns>
-		public Task connect(IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
-			_connectInit(headers);
-			return _connectSend(_connectUri(), ct);
+		/// <exception cref="InvalidOperationException"></exception>
+		public async Task connect(IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
+			if (this.status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.status}.");
+
+			this.client = new ClientWebSocket();
+			_sauce = new CancellationTokenSource();
+			_outgoing = new BlockingCollection<TrakitSocketMessage>();
+			if (headers?.Count() > 0) {
+				foreach (var pair in headers) {
+					this.client.Options.SetRequestHeader(pair.Key, pair.Value);
+				}
+			}
+			var uri = $"{this.baseAddress.AbsoluteUri.TrimEnd('/')}/";
+			if (_machine != default) {
+				this.client.Options.SetRequestHeader(
+					"Authorization",
+					"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
+						_machine.key
+						+ ":"
+						+ signatures.createHmacSignedInput(
+							_machine.key,
+							_machine.secret,
+							DateTime.UtcNow,
+							HttpMethod.Get,
+							new Uri(uri),
+							0
+						)
+					))
+				);
+			} else {
+				uri += $"{(uri.Contains("?") ? "&" : "?")}ghostId={_sessionId}";
+			}
+			try {
+				var conn = this.client.ConnectAsync(
+					new Uri(uri),
+					ct.HasValue
+						? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value).Token
+						: _sauce.Token
+				);
+				_onStatus(TrakitSocketStatus.opening);
+				await conn;
+				conn = _connecting();
+				_receiver = Task.Run(_receiving, _sauce.Token);
+				_sender = Task.Run(_sending, _sauce.Token);
+				await conn;
+			} catch {
+				_onStatus(TrakitSocketStatus.closed);
+				throw;
+			}
 		}
+		/*
 		/// <summary>
 		/// Resumes a <see cref="WebSocket"/> connection for an existing <see cref="Session"/>.
 		/// </summary>
@@ -372,29 +448,27 @@ namespace trakit.wss {
 		/// <param name="headers"></param>
 		/// <returns></returns>
 		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
+			_connectInit(headers);
 			var uri = _connectUri();
-			_connectInit(
-				(headers ?? new Dictionary<string, string>()).Concat(new[] {
-					new KeyValuePair<string, string>(
-						"Authorization",
-						"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
-							apiKey
-							+ ":"
-							+ signatures.createHmacSignedInput(
-								apiKey,
-								apiSecret,
-								DateTime.UtcNow,
-								HttpMethod.Get,
-								new Uri(uri.TrimEnd('?')),
-								0
-							)
-						))
+			this.client.Options.SetRequestHeader(
+				"Authorization",
+				"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
+					apiKey
+					+ ":"
+					+ signatures.createHmacSignedInput(
+						apiKey,
+						apiSecret,
+						DateTime.UtcNow,
+						HttpMethod.Get,
+						new Uri(uri.TrimEnd('?')),
+						0
 					)
-				})
+				))
 			);
 			//uri += $"shadowKey={apiKey}&shadowSig={HttpUtility.UrlEncode(signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri.TrimEnd('?')), 0))}";
 			return _connectSend(uri, ct);
 		}
+		*/
 		#endregion Initiate Connection
 		#region Initiate Disconnection
 		// an awaitable task which completes upon disconnection
