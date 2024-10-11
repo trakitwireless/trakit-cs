@@ -90,82 +90,105 @@ namespace trakit.https {
 		}
 		#endregion Authorization
 
-		/// <summary>
-		/// 
-		/// </summary>
-		/// <param name="method"></param>
-		/// <param name="path"></param>
-		/// <param name="parms"></param>
-		/// <returns></returns>
-		Task<HttpResponseMessage> _raw(HttpMethod method, string path, JToken parms = default) {
-			_reqId++;
+		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
+		Task<HttpResponseMessage> _request(HttpMethod method, string path, JObject body = default) {
+			_reqId++; // always
 			var request = new HttpRequestMessage(method, path);
 			path = $"{this.baseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
-			if (parms != default) {
-				parms["reqId"] = _reqId;
+			if (body != default) {
+				// request has a body
+				body["reqId"] = _reqId;
 				request.Content = new StringContent(
-					this.serializer.serialize(parms),
+					this.serializer.serialize(body),
 					Encoding.UTF8,
 					"text/json"
 				);
 			} else {
+				// no body, so add reqId to query-string
 				path += $"{(!path.Contains("?") ? "?" : "&")}reqId={_reqId}";
 			}
 			if (_machine?.secret?.Length != 0) {
+				// use machine auth
 				request.RequestUri = new Uri(path);
 				signatures.addHmacHeader(request, _machine);
 			} else if (_sessionId != default) {
+				// user session in query-string
 				request.RequestUri = new Uri(path + $"{(!path.Contains("?") ? "?" : "&")}ghostId={_sessionId}");
 			}
 			return this.client.SendAsync(request);
 		}
+
 		/// <summary>
-		/// 
+		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="ResponseType"/>.
 		/// </summary>
-		/// <typeparam name="TResponse">The <see cref="ResponseType"/> for the given request.</typeparam>
-		/// <param name="method"></param>
-		/// <param name="path"></param>
-		/// <param name="parms"></param>
-		/// <returns></returns>
-		public async Task<TrakitRestfulResponse<TResponse>> send<TResponse>(HttpMethod method, string path, ParameterType parms = default) where TResponse : ResponseType {
-			var response = await _raw(method, path, JObject.FromObject(parms));
-			return new TrakitRestfulResponse<TResponse>(
+		/// <typeparam name="TReq">The <see cref="ParameterType"/>for the given request.</typeparam>
+		/// <typeparam name="TResp">The <see cref="ResponseType"/> for the given request.</typeparam>
+		/// <param name="message">Request message details.</param>
+		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
+		public async Task<TrakitRestfulResponse<TResp>> request<TReq, TResp>(
+			TrakitRestfulRequest<TReq> message
+		) where TReq : ParameterType where TResp : ResponseType {
+			var response = await _request(
+				message.method,
+				message.path,
+				this.serializer.convert<ParameterType, JObject>(message.parameters)
+			);
+			return new TrakitRestfulResponse<TResp>(
 				response,
-				this.serializer.deserialize<TResponse>(await response.Content.ReadAsStringAsync())
+				this.serializer.deserialize<TResp>(await response.Content.ReadAsStringAsync())
 			);
 		}
 		/// <summary>
-		/// 
+		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="ResponseType"/>.
 		/// </summary>
-		/// <param name="method"></param>
-		/// <param name="path"></param>
-		/// <param name="parms"></param>
-		/// <returns></returns>
-		public async Task<TJson> send<TJson>(HttpMethod method, string path, JObject parms = default) where TJson : JObject {
-			var response = await _raw(method, path, parms);
+		/// <typeparam name="TReq">The <see cref="ParameterType"/>for the given request.</typeparam>
+		/// <typeparam name="TResp">The <see cref="ResponseType"/> for the given request.</typeparam>
+		/// <param name="method"><see cref="HttpMethod"/> for this request.</param>
+		/// <param name="path">The relative path from the <see cref="baseAddress"/> for this request.</param>
+		/// <param name="parms">Optional request parameters.</param>
+		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
+		public Task<TrakitRestfulResponse<TResp>> request<TReq, TResp>(
+			HttpMethod method,
+			string path,
+			TReq parms = default
+		) where TReq : ParameterType where TResp : ResponseType
+			=> this.request<TReq, TResp>(new TrakitRestfulRequest<TReq>(
+				method,
+				path,
+				parms
+			));
+		/// <summary>
+		/// Sends a raw JSON request to the Trak-iT RESTful API and returns a task whose result is also JSON.
+		/// </summary>
+		/// <param name="method"><see cref="HttpMethod"/> for this request.</param>
+		/// <param name="path">The relative path from the <see cref="baseAddress"/> for this request.</param>
+		/// <param name="parms">Optional request parameters.</param>
+		/// <returns>The JSON which appears in the body of the response.</returns>
+		public async Task<TJson> request<TJson>(HttpMethod method, string path, JObject parms = default) where TJson : JObject {
+			var response = await _request(method, path, parms);
 			return this.serializer.deserialize<TJson>(await response.Content.ReadAsStringAsync());
 		}
 
 		/// <summary>
 		/// Sends a login command, and if successful, saves the <see cref="RespSelfDetails.ghostId"/> as the authentication mechanism for all further requests.
 		/// </summary>
-		/// <param name="username"></param>
-		/// <param name="password"></param>
-		/// <param name="userAgent"></param>
-		/// <returns></returns>
+		/// <param name="username">Your email address.</param>
+		/// <param name="password">Your password.</param>
+		/// <param name="userAgent">Optional string to identify this software.</param>
+		/// <returns>The <see cref="RespSelfDetails"/>, which contains a <see cref="RespSelfUser"/> when successful.</returns>
 		public async Task<TrakitRestfulResponse<RespSelfDetails>> login(string username, string password, string userAgent = default) {
 			var body = new ReqLogin() {
 				username = username,
 				password = password,
 			};
 			if (userAgent != default) body.userAgent = userAgent;
-			var response = await this.send<RespSelfDetails>(
+			var response = await this.request<ReqLogin, RespSelfDetails>(
 				HttpMethod.Post,
 				"self/login",
 				body
 			);
-			this.session = response.result;
-			if (response.result.errorCode == ErrorCode.success && Guid.TryParse(response.result.ghostId, out Guid sessionId)) {
+			this.session = response.body;
+			if (response.body.errorCode == ErrorCode.success && Guid.TryParse(response.body.ghostId, out Guid sessionId)) {
 				this.setAuth(sessionId);
 			}
 			return response;
