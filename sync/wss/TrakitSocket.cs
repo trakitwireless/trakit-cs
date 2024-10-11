@@ -372,9 +372,27 @@ namespace trakit.wss {
 		/// <param name="headers"></param>
 		/// <returns></returns>
 		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
-			_connectInit(headers);
 			var uri = _connectUri();
-			uri += $"shadowKey={apiKey}&shadowSig={HttpUtility.UrlEncode(signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri.TrimEnd('?')), 0))}";
+			_connectInit(
+				(headers ?? new Dictionary<string, string>()).Concat(new[] {
+					new KeyValuePair<string, string>(
+						"Authorization",
+						"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
+							apiKey
+							+ ":"
+							+ signatures.createHmacSignedInput(
+								apiKey,
+								apiSecret,
+								DateTime.UtcNow,
+								HttpMethod.Get,
+								new Uri(uri.TrimEnd('?')),
+								0
+							)
+						))
+					)
+				})
+			);
+			//uri += $"shadowKey={apiKey}&shadowSig={HttpUtility.UrlEncode(signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri.TrimEnd('?')), 0))}";
 			return _connectSend(uri, ct);
 		}
 		#endregion Initiate Connection
