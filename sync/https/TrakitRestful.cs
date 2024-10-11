@@ -200,8 +200,8 @@ namespace trakit.https {
 		/// Sends a logout command, and if successful, removes the current session using <see cref="setAuth()"/>.
 		/// </summary>
 		/// <returns></returns>
-		public async Task<TrakitRestfulResponse<RespBlank>> logout() {
-			var response = await this.request<ReqBlank, RespBlank>(HttpMethod.Post, "self/logout");
+		public async Task<TrakitRestfulResponse<RespLogout>> logout() {
+			var response = await this.request<ReqBlank, RespLogout>(HttpMethod.Post, "self/logout");
 			switch (response.body.errorCode) {
 				case ErrorCode.success:
 				case ErrorCode.sessionExpired:
