@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
 using trakit.hmac;
@@ -420,6 +421,7 @@ namespace trakit.wss {
 		const string SUFFIX = "Response";
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
+		/// This function is useful if the command response is not important.
 		/// </summary>
 		/// <param name="name"></param>
 		/// <param name="parameters"></param>
@@ -444,11 +446,15 @@ namespace trakit.wss {
 			var sauce = new TaskCompletionSource<TResponse>();
 			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
 				if (received.name == outbound.name + SUFFIX) {
-					var response = this.serializer.deserialize<TResponse>(received.body);
-					if (response.reqId == parameters.reqId) {
-						this.StatusChanged -= handleDis;
-						this.MessageReceived -= handleMsg;
-						sauce.SetResult(response);
+					try {
+						var response = this.serializer.deserialize<TResponse>(received.body);
+						if (response.reqId == parameters.reqId) {
+							this.StatusChanged -= handleDis;
+							this.MessageReceived -= handleMsg;
+							sauce.SetResult(response);
+						}
+					} catch (JsonException ex) {
+						sauce.SetException(ex);
 					}
 				}
 			}
@@ -470,7 +476,8 @@ namespace trakit.wss {
 			return sauce.Task;
 		}
 		/// <summary>
-		/// 
+		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
+		/// This command allows you to work with the API in raw JSON instead of relying no the Trak-iT API <see cref="ResponseType"/> classes.
 		/// </summary>
 		/// <typeparam name="TJson"></typeparam>
 		/// <param name="name"></param>
