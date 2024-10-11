@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using trakit.commands;
 using trakit.objects;
 
 namespace trakit.https {
 	/// <summary>
 	/// A request sent to one of Trak-iT's RESTful APIs.
 	/// </summary>
-	public class TrakitRestfulRequest<T> where T : ParameterType {
+	public class TrakitRestfulRequest<T> where T : Request {
 		#region Paths for listing objects
 		public static string listByParent<T>(T cacheable) where T : Component, IAmCompany
 			=> listByParent(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.id);
@@ -233,7 +234,7 @@ namespace trakit.https {
 		/// </summary>
 		public string path;
 		/// <summary>
-		/// An optional <see cref="ParameterType"/> for the command.
+		/// An optional <see cref="Request"/> for the command.
 		/// </summary>
 		public T parameters;
 

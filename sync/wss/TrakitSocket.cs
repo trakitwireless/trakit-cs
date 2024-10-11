@@ -426,7 +426,7 @@ namespace trakit.wss {
 		/// <param name="name"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
-		public Task<ResponseType> command(string name, ParameterType parameters) => this.command<ResponseType>(name, parameters);
+		public Task<Response> command(string name, Request parameters) => this.command<Response>(name, parameters);
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
 		/// </summary>
@@ -436,7 +436,7 @@ namespace trakit.wss {
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
 		/// <exception cref="OperationCanceledException"></exception>
-		public Task<TResponse> command<TResponse>(string name, ParameterType parameters) where TResponse : ResponseType {
+		public Task<TResponse> command<TResponse>(string name, Request parameters) where TResponse : Response {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
 			// let's track this request.
@@ -477,7 +477,7 @@ namespace trakit.wss {
 		}
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
-		/// This command allows you to work with the API in raw JSON instead of relying no the Trak-iT API <see cref="ResponseType"/> classes.
+		/// This command allows you to work with the API in raw JSON instead of relying no the Trak-iT API <see cref="Response"/> classes.
 		/// </summary>
 		/// <typeparam name="TJson"></typeparam>
 		/// <param name="name"></param>
