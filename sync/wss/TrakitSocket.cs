@@ -120,7 +120,121 @@ namespace trakit.wss {
 		}
 		#endregion Authorization
 
-		#region Handling Disconnect
+		#region Connection
+		// an awaitable task which completes upon disconnection
+		Task _connecting() {
+			var sauce = new TaskCompletionSource<bool>();
+			void handler(TrakitSocket sender) {
+				this.StatusChanged -= handler;
+				if (this.status == TrakitSocketStatus.open) {
+					sauce.SetResult(true);
+				} else {
+					sauce.SetCanceled();
+				}
+			};
+			this.StatusChanged += handler;
+			return sauce.Task;
+		}
+		// an awaitable task which completes upon disconnection
+		Task _disconnecting() {
+			var sauce = new TaskCompletionSource<bool>();
+			void handler(TrakitSocket sender) {
+				switch (this.status) {
+					case TrakitSocketStatus.closing:
+						// do nothing, return instead of break so as to not unbind the handler
+						return;
+					case TrakitSocketStatus.closed:
+						sauce.SetResult(true);
+						break;
+					default:
+						sauce.SetCanceled();
+						break;
+				}
+				this.StatusChanged -= handler;
+			};
+			this.StatusChanged += handler;
+			return sauce.Task;
+		}
+
+		/// <summary>
+		/// Initiates a new <see cref="WebSocket"/> connection.
+		/// </summary>
+		/// <param name="headers"></param>
+		/// <param name="ct"></param>
+		/// <returns></returns>
+		/// <exception cref="InvalidOperationException"></exception>
+		public async Task connect(IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
+			if (this.status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.status}.");
+
+			this.client = new ClientWebSocket();
+			_sauce = new CancellationTokenSource();
+			_outgoing = new BlockingCollection<TrakitSocketMessage>();
+			if (headers?.Count() > 0) {
+				foreach (var pair in headers) {
+					this.client.Options.SetRequestHeader(pair.Key, pair.Value);
+				}
+			}
+			var uri = $"{this.baseAddress.AbsoluteUri.TrimEnd('/')}/";
+			if (_machine != default) {
+				this.client.Options.SetRequestHeader(
+					"Authorization",
+					"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
+						_machine.key
+						+ ":"
+						+ signatures.createHmacSignedInput(
+							_machine.key,
+							_machine.secret,
+							DateTime.UtcNow,
+							HttpMethod.Get,
+							new Uri(uri),
+							0
+						)
+					))
+				);
+			} else {
+				uri += $"{(uri.Contains("?") ? "&" : "?")}ghostId={_sessionId}";
+			}
+			try {
+				var conn = this.client.ConnectAsync(
+					new Uri(uri),
+					ct.HasValue
+						? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value).Token
+						: _sauce.Token
+				);
+				_onStatus(TrakitSocketStatus.opening);
+				await conn;
+				conn = _connecting();
+				_receiver = Task.Run(_receiving, _sauce.Token);
+				_sender = Task.Run(_sending, _sauce.Token);
+				await conn;
+			} catch {
+				_onStatus(TrakitSocketStatus.closed);
+				throw;
+			}
+		}
+		/// <summary>
+		/// Initiates a disconnection of the Trak-iT <see cref="WebSocket"/> service.
+		/// The disconnection will take place after all outbound messages are sent.
+		/// However, if the <paramref name="reason"/> is anything other than <see cref="WebSocketCloseStatus.NormalClosure"/>,
+		/// or the <paramref name="forceClose"/> is set to true, the sending process is interupted to send the close request first.
+		/// </summary>
+		/// <param name="reason">Reason for closing the connection.</param>
+		/// <param name="message">Parting message.</param>
+		/// <returns></returns>
+		/// <exception cref="InvalidOperationException"></exception>
+		public Task disconnect(
+			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
+			string message = BYEBYE
+		) {
+			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+
+			_closer = new TrakitSocketMessage(message, string.Empty, reason);
+			_outgoing.TryAdd(_closer, -1, _sauce.Token);
+
+			return _disconnecting();
+		}
+		#endregion Connection
+		#region Disconnection
 		// generic disconnect message
 		const string BYEBYE = "Goodbye!";
 		// token source for managing connecting, and incoming/outgoing messaging
@@ -157,8 +271,9 @@ namespace trakit.wss {
 
 			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
 		}
-		#endregion Handling Disconnect
-		#region Receiving Messages
+		#endregion Disconnection
+
+		#region Messages - Receiving
 		// 1mb buffer for receiving; way more than enough
 		const int BUFFER = 1024 * 1024;
 		// task to handle incoming messages and server-side disconnections
@@ -225,8 +340,8 @@ namespace trakit.wss {
 			}
 			_shutdown(closeMessage, closeReason);
 		}
-		#endregion Receiving Messages
-		#region Sending Messages
+		#endregion Messages - Receiving
+		#region Messages - Sending
 		// task to handle outgoing messages and client-side disconnections
 		Task _sender;
 		// list of outgoing messages
@@ -299,221 +414,8 @@ namespace trakit.wss {
 				ct
 			) ?? Task.CompletedTask);
 		}
-		#endregion Sending Messages
-
-		#region Initiate Connection
-		// returns a clean Trak-iT socket address
-		string _connectUri() {
-			var endpoint = this.baseAddress.AbsoluteUri.TrimEnd('?', '/', '&');
-			return endpoint + (endpoint.Contains("?") ? "&" : "/?");
-		}
-		// instantiates a new ClientWebSocket, and associated class needed to run processes
-		void _connectInit(IEnumerable<KeyValuePair<string, string>> headers) {
-			if (this.status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.status}.");
-
-			this.client = new ClientWebSocket();
-			_sauce = new CancellationTokenSource();
-			_outgoing = new BlockingCollection<TrakitSocketMessage>();
-			if (headers?.Count() > 0) {
-				foreach (var pair in headers) {
-					this.client.Options.SetRequestHeader(pair.Key, pair.Value);
-				}
-			}
-		}
-		// an awaitable task which completes upon disconnection
-		Task _connecting() {
-			var sauce = new TaskCompletionSource<bool>();
-			void handler(TrakitSocket sender) {
-				this.StatusChanged -= handler;
-				if (this.status == TrakitSocketStatus.open) {
-					sauce.SetResult(true);
-				} else {
-					sauce.SetCanceled();
-				}
-			};
-			this.StatusChanged += handler;
-			return sauce.Task;
-		}
-		// sends the connection async, changes status to "opening", and starts sending/receiving tasks
-		async Task _connectSend(string uri, CancellationToken? ct = null) {
-			try {
-				var conn = this.client.ConnectAsync(
-					new Uri(uri),
-					ct.HasValue
-						? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value).Token
-						: _sauce.Token
-				);
-				_onStatus(TrakitSocketStatus.opening);
-				await conn;
-				conn = _connecting();
-				_receiver = Task.Run(_receiving, _sauce.Token);
-				_sender = Task.Run(_sending, _sauce.Token);
-				await conn;
-			} catch {
-				_onStatus(TrakitSocketStatus.closed);
-				throw;
-			}
-		}
-
-		/// <summary>
-		/// Initiates a new <see cref="WebSocket"/> connection.
-		/// </summary>
-		/// <param name="headers"></param>
-		/// <param name="ct"></param>
-		/// <returns></returns>
-		/// <exception cref="InvalidOperationException"></exception>
-		public async Task connect(IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
-			if (this.status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.status}.");
-
-			this.client = new ClientWebSocket();
-			_sauce = new CancellationTokenSource();
-			_outgoing = new BlockingCollection<TrakitSocketMessage>();
-			if (headers?.Count() > 0) {
-				foreach (var pair in headers) {
-					this.client.Options.SetRequestHeader(pair.Key, pair.Value);
-				}
-			}
-			var uri = $"{this.baseAddress.AbsoluteUri.TrimEnd('/')}/";
-			if (_machine != default) {
-				this.client.Options.SetRequestHeader(
-					"Authorization",
-					"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
-						_machine.key
-						+ ":"
-						+ signatures.createHmacSignedInput(
-							_machine.key,
-							_machine.secret,
-							DateTime.UtcNow,
-							HttpMethod.Get,
-							new Uri(uri),
-							0
-						)
-					))
-				);
-			} else {
-				uri += $"{(uri.Contains("?") ? "&" : "?")}ghostId={_sessionId}";
-			}
-			try {
-				var conn = this.client.ConnectAsync(
-					new Uri(uri),
-					ct.HasValue
-						? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value).Token
-						: _sauce.Token
-				);
-				_onStatus(TrakitSocketStatus.opening);
-				await conn;
-				conn = _connecting();
-				_receiver = Task.Run(_receiving, _sauce.Token);
-				_sender = Task.Run(_sending, _sauce.Token);
-				await conn;
-			} catch {
-				_onStatus(TrakitSocketStatus.closed);
-				throw;
-			}
-		}
-		/*
-		/// <summary>
-		/// Resumes a <see cref="WebSocket"/> connection for an existing <see cref="Session"/>.
-		/// </summary>
-		/// <param name="sessionId"></param>
-		/// <param name="headers"></param>
-		/// <returns></returns>
-		public Task connect(Guid sessionId, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
-			_connectInit(headers);
-			return _connectSend(_connectUri() + $"ghostId={sessionId}", ct);
-		}
-		/// <summary>
-		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="User"/> account.
-		/// </summary>
-		/// <param name="username"></param>
-		/// <param name="password"></param>
-		/// <param name="headers"></param>
-		/// <returns></returns>
-		public Task connect(string username, string password, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
-			_connectInit(headers);
-			return _connectSend(_connectUri() + $"username={username}&password={HttpUtility.UrlEncode(password)}", ct);
-		}
-		/// <summary>
-		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="Machine"/> account.
-		/// </summary>
-		/// <param name="machine"></param>
-		/// <param name="headers"></param>
-		/// <returns></returns>
-		public Task connect(Machine machine, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) => this.connect(machine.key, Convert.FromBase64String(machine.secret), headers, ct);
-		/// <summary>
-		/// Initiates a <see cref="WebSocket"/> connection for a <see cref="Machine"/>'s <see cref="Machine.key"/> and <see cref="Machine.secret"/>.
-		/// </summary>
-		/// <param name="apiKey"><see cref="Machine.key"/></param>
-		/// <param name="apiSecret"><see cref="Machine.secret"/> as bytes from <see cref="Encoding.UTF8"/></param>
-		/// <param name="headers"></param>
-		/// <returns></returns>
-		public Task connect(string apiKey, byte[] apiSecret, IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
-			_connectInit(headers);
-			var uri = _connectUri();
-			this.client.Options.SetRequestHeader(
-				"Authorization",
-				"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
-					apiKey
-					+ ":"
-					+ signatures.createHmacSignedInput(
-						apiKey,
-						apiSecret,
-						DateTime.UtcNow,
-						HttpMethod.Get,
-						new Uri(uri.TrimEnd('?')),
-						0
-					)
-				))
-			);
-			//uri += $"shadowKey={apiKey}&shadowSig={HttpUtility.UrlEncode(signatures.createHmacSignedInput(apiKey, apiSecret, DateTime.UtcNow, HttpMethod.Get, new Uri(uri.TrimEnd('?')), 0))}";
-			return _connectSend(uri, ct);
-		}
-		*/
-		#endregion Initiate Connection
-		#region Initiate Disconnection
-		// an awaitable task which completes upon disconnection
-		Task _disconnecting() {
-			var sauce = new TaskCompletionSource<bool>();
-			void handler(TrakitSocket sender) {
-				switch (this.status) {
-					case TrakitSocketStatus.closing:
-						// do nothing, return instead of break so as to not unbind the handler
-						return;
-					case TrakitSocketStatus.closed:
-						sauce.SetResult(true);
-						break;
-					default:
-						sauce.SetCanceled();
-						break;
-				}
-				this.StatusChanged -= handler;
-			};
-			this.StatusChanged += handler;
-			return sauce.Task;
-		}
-		/// <summary>
-		/// Initiates a disconnection of the Trak-iT <see cref="WebSocket"/> service.
-		/// The disconnection will take place after all outbound messages are sent.
-		/// However, if the <paramref name="reason"/> is anything other than <see cref="WebSocketCloseStatus.NormalClosure"/>,
-		/// or the <paramref name="forceClose"/> is set to true, the sending process is interupted to send the close request first.
-		/// </summary>
-		/// <param name="reason">Reason for closing the connection.</param>
-		/// <param name="message">Parting message.</param>
-		/// <returns></returns>
-		/// <exception cref="InvalidOperationException"></exception>
-		public Task disconnect(
-			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
-			string message = BYEBYE
-		) {
-			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
-
-			_closer = new TrakitSocketMessage(message, string.Empty, reason);
-			_outgoing.TryAdd(_closer, -1, _sauce.Token);
-
-			return _disconnecting();
-		}
-		#endregion Initiate Disconnection
-		#region Sending Commands
+		#endregion Messages - Sending
+		#region Messages - Commands
 		// command name reply suffix
 		const string SUFFIX = "Response";
 		/// <summary>
@@ -639,7 +541,7 @@ namespace trakit.wss {
 		/// <returns></returns>
 		public Task<RespSubscriptionList> subscriptionList()
 			=> this.command<RespSubscriptionList>("getSubscriptionsList", new ReqBlank());
-		#endregion Sending Commands
+		#endregion Messages - Commands
 
 		#region Events
 		/// <summary>
