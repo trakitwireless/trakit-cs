@@ -5,9 +5,10 @@ using trakit.objects;
 
 namespace trakit.https {
 	/// <summary>
-	/// 
+	/// A request sent to one of Trak-iT's RESTful APIs.
 	/// </summary>
-	public class TrakitRestfulRequest {
+	public class TrakitRestfulRequest<T> where T : ParameterType {
+		#region Paths for listing objects
 		public static string listByParent<T>(T cacheable) where T : Component, IAmCompany
 			=> listByParent(cacheable?.GetType() ?? throw new ArgumentNullException("cacheable"), cacheable.id);
 		public static string listByCompany<T>(T cacheable) where T : Component, IBelongCompany
@@ -221,10 +222,25 @@ namespace trakit.https {
 			}
 			throw new KeyNotFoundException($"{type?.FullName} cannot be listed by BillingProfile");
 		}
+		#endregion Paths for listing objects
 
-
+		/// <summary>
+		/// HTTP Verb for this command.
+		/// </summary>
 		public HttpMethod method;
+		/// <summary>
+		/// Relative path from the <see cref="TrakitRestful.baseAddress"/>.
+		/// </summary>
 		public string path;
-		public ParameterType parameters;
+		/// <summary>
+		/// An optional <see cref="ParameterType"/> for the command.
+		/// </summary>
+		public T parameters;
+
+		public TrakitRestfulRequest(HttpMethod method, string path, T parameters = default) {
+			this.method = method;
+			this.path = path;
+			this.parameters = parameters;
+		}
 	}
 }
