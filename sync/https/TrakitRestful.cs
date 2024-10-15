@@ -108,7 +108,7 @@ namespace trakit.https {
 				// no body, so add reqId to query-string
 				path += $"{(!path.Contains("?") ? "?" : "&")}reqId={_reqId}";
 			}
-			if (_machine?.secret?.Length != 0) {
+			if ((_machine?.secret?.Length ?? 0) != 0) {
 				// use machine auth
 				request.RequestUri = new Uri(path);
 				signatures.addHmacHeader(request, _machine);
@@ -132,7 +132,9 @@ namespace trakit.https {
 			var response = await _request(
 				message.method,
 				message.path,
-				this.serializer.convert<Request, JObject>(message.parameters)
+				message.parameters == default
+					? default
+					: this.serializer.convert<Request, JObject>(message.parameters)
 			);
 			return new TrakitRestfulResponse<TResp>(
 				response,
@@ -152,12 +154,26 @@ namespace trakit.https {
 			HttpMethod method,
 			string path,
 			TReq parms = default
-		) where TReq : Request where TResp : Response
-			=> this.request<TReq, TResp>(new TrakitRestfulRequest<TReq>(
-				method,
-				path,
-				parms
-			));
+		) where TReq : Request where TResp : Response => this.request<TReq, TResp>(new TrakitRestfulRequest<TReq>(
+			method,
+			path,
+			parms
+		));
+
+		/// <summary>
+		/// Sends a <see cref="HttpMethod.Get"/> request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
+		/// This function provides a quick way to <c>get</c> and <c>list</c> objects from the service.
+		/// </summary>
+		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
+		/// <param name="path">The relative path from the <see cref="baseAddress"/> for this request.</param>
+		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
+		public Task<TrakitRestfulResponse<TResp>> get<TResp>(
+			string path
+		) where TResp : Response => this.request<ReqBlank, TResp>(new TrakitRestfulRequest<ReqBlank>(
+			HttpMethod.Get,
+			path
+		));
+
 		/// <summary>
 		/// Sends a raw JSON request to the Trak-iT RESTful API and returns a task whose result is also JSON.
 		/// </summary>
