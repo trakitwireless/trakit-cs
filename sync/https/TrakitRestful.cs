@@ -136,9 +136,11 @@ namespace trakit.https {
 					? default
 					: this.serializer.convert<Request, JObject>(message.parameters)
 			);
+			string content = await response.Content.ReadAsStringAsync();
 			return new TrakitRestfulResponse<TResp>(
 				response,
-				this.serializer.deserialize<TResp>(await response.Content.ReadAsStringAsync())
+				content,
+				this.serializer.deserialize<TResp>(content)
 			);
 		}
 		/// <summary>

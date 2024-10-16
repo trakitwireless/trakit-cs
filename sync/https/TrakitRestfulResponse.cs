@@ -11,12 +11,17 @@ namespace trakit.https {
 		/// </summary>
 		public readonly HttpResponseMessage http;
 		/// <summary>
+		/// Raw response body contents (for debugging).
+		/// </summary>
+		public readonly string content;
+		/// <summary>
 		/// The deserialized API <see cref="Response"/>.
 		/// </summary>
 		public readonly T body;
 
-		public TrakitRestfulResponse(HttpResponseMessage http, T body) {
+		public TrakitRestfulResponse(HttpResponseMessage http, string content, T body) {
 			this.http = http;
+			this.content = content;
 			this.body = body;
 		}
 	}
