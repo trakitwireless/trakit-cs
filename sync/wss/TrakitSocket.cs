@@ -469,12 +469,11 @@ namespace trakit.wss {
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
 		/// </summary>
-		/// <typeparam name="TRequest"></typeparam>
 		/// <typeparam name="TResponse"></typeparam>
 		/// <param name="request"></param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
-		public Task<TResponse> command<TRequest, TResponse>(TRequest request) where TRequest : Request where TResponse : Response {
+		public Task<TResponse> command<TResponse>(Request request) where TResponse : Response {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
 			// let's track this request.
@@ -523,7 +522,7 @@ namespace trakit.wss {
 		/// <param name="subscriptions"></param>
 		/// <returns></returns>
 		public Task<RespSubscription> subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.command<ReqSubscriptionMerge, RespSubscription>(new ReqSubscriptionMerge() {
+			=> this.command<RespSubscription>(new ReqSubscriptionMerge() {
 				company = new ParamId() { id = company },
 				subscriptionTypes = subscriptions.ToArray()
 			});
@@ -534,7 +533,7 @@ namespace trakit.wss {
 		/// <param name="subscriptions"></param>
 		/// <returns></returns>
 		public Task<RespSubscription> unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.command<ReqSubscriptionMerge, RespSubscription>(new ReqSubscriptionRemove() {
+			=> this.command<RespSubscription>(new ReqSubscriptionRemove() {
 				company = new ParamId() { id = company },
 				subscriptionTypes = subscriptions.ToArray()
 			});
@@ -543,7 +542,7 @@ namespace trakit.wss {
 		/// </summary>
 		/// <returns></returns>
 		public Task<RespSubscriptionList> subscriptionList()
-			=> this.command<ReqSubscriptionList, RespSubscriptionList>(new ReqSubscriptionList());
+			=> this.command<RespSubscriptionList>(new ReqSubscriptionList());
 		#endregion Messages - Commands
 
 		#region Events

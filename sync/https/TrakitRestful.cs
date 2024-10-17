@@ -154,13 +154,10 @@ namespace trakit.https {
 		/// <summary>
 		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
 		/// </summary>
-		/// <typeparam name="TReq">The <see cref="Request"/>for the given request.</typeparam>
 		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
 		/// <param name="message">Request message details.</param>
 		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public async Task<TResp> request<TReq, TResp>(
-			TReq message
-		) where TReq : Request where TResp : Response {
+		public async Task<TResp> request<TResp>(Request message) where TResp : Response {
 			HttpRequestMessage request = null;
 			HttpResponseMessage response = null;
 			HttpMethod method = null;
@@ -171,7 +168,7 @@ namespace trakit.https {
 				request = _request(
 					method = message.httpVerb,
 					route = message.httpRoute,
-					this.serializer.convert<TReq, JObject>(message),
+					this.serializer.convert<Request, JObject>(message),
 					out route,
 					out body
 				);
@@ -205,7 +202,7 @@ namespace trakit.https {
 				password = password,
 			};
 			if (userAgent != default) body.userAgent = userAgent;
-			this.session = await this.request<ReqLogin, RespSelfDetails>(body);
+			this.session = await this.request<RespSelfDetails>(body);
 			if (this.session.errorCode == ErrorCode.success && Guid.TryParse(this.session.ghostId, out Guid sessionId)) {
 				this.setAuth(sessionId);
 			}
@@ -216,7 +213,7 @@ namespace trakit.https {
 		/// </summary>
 		/// <returns></returns>
 		public async Task<RespLogout> logout() {
-			var response = await this.request<ReqLogout, RespLogout>(new ReqLogout());
+			var response = await this.request<RespLogout>(new ReqLogout());
 			switch (response.errorCode) {
 				case ErrorCode.success:
 				case ErrorCode.sessionExpired:
