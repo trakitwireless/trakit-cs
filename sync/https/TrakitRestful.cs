@@ -92,7 +92,7 @@ namespace trakit.https {
 
 		#region Sending - Requests
 		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
-		Task<HttpResponseMessage> _request(HttpMethod method, string path, JObject body = default) {
+		HttpRequestMessage _request(HttpMethod method, string path, JObject body, out string route, out string content) {
 			_reqId++; // always
 			var request = new HttpRequestMessage(method, path);
 			path = $"{this.baseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
@@ -100,13 +100,14 @@ namespace trakit.https {
 				// request has a body
 				body["reqId"] = _reqId;
 				request.Content = new StringContent(
-					this.serializer.serialize(body),
+					content = this.serializer.serialize(body),
 					Encoding.UTF8,
 					"text/json"
 				);
 			} else {
 				// no body, so add reqId to query-string
 				path += $"{(!path.Contains("?") ? "?" : "&")}reqId={_reqId}";
+				content = null;
 			}
 			if ((_machine?.secret?.Length ?? 0) != 0) {
 				// use machine auth
@@ -116,65 +117,9 @@ namespace trakit.https {
 				// user session in query-string
 				request.RequestUri = new Uri(path + $"{(!path.Contains("?") ? "?" : "&")}ghostId={_sessionId}");
 			}
-			return this.client.SendAsync(request);
+			route = request.RequestUri.ToString();
+			return request;
 		}
-
-		/// <summary>
-		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
-		/// </summary>
-		/// <typeparam name="TReq">The <see cref="Request"/>for the given request.</typeparam>
-		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
-		/// <param name="message">Request message details.</param>
-		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public async Task<TrakitRestfulResponse<TResp>> request<TReq, TResp>(
-			TrakitRestfulRequest<TReq> message
-		) where TReq : Request where TResp : Response {
-			var response = await _request(
-				message.method,
-				message.path,
-				message.parameters == default
-					? default
-					: this.serializer.convert<Request, JObject>(message.parameters)
-			);
-			string content = await response.Content.ReadAsStringAsync();
-			return new TrakitRestfulResponse<TResp>(
-				response,
-				content,
-				this.serializer.deserialize<TResp>(content)
-			);
-		}
-		/// <summary>
-		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
-		/// </summary>
-		/// <typeparam name="TReq">The <see cref="Request"/>for the given request.</typeparam>
-		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
-		/// <param name="method"><see cref="HttpMethod"/> for this request.</param>
-		/// <param name="path">The relative path from the <see cref="baseAddress"/> for this request.</param>
-		/// <param name="parms">Optional request parameters.</param>
-		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public Task<TrakitRestfulResponse<TResp>> request<TReq, TResp>(
-			HttpMethod method,
-			string path,
-			TReq parms = default
-		) where TReq : Request where TResp : Response => this.request<TReq, TResp>(new TrakitRestfulRequest<TReq>(
-			method,
-			path,
-			parms
-		));
-
-		/// <summary>
-		/// Sends a <see cref="HttpMethod.Get"/> request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
-		/// This function provides a quick way to <c>get</c> and <c>list</c> objects from the service.
-		/// </summary>
-		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
-		/// <param name="path">The relative path from the <see cref="baseAddress"/> for this request.</param>
-		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public Task<TrakitRestfulResponse<TResp>> get<TResp>(
-			string path
-		) where TResp : Response => this.request<ReqBlank, TResp>(new TrakitRestfulRequest<ReqBlank>(
-			HttpMethod.Get,
-			path
-		));
 
 		/// <summary>
 		/// Sends a raw JSON request to the Trak-iT RESTful API and returns a task whose result is also JSON.
@@ -184,8 +129,65 @@ namespace trakit.https {
 		/// <param name="parms">Optional request parameters.</param>
 		/// <returns>The JSON which appears in the body of the response.</returns>
 		public async Task<TJson> request<TJson>(HttpMethod method, string path, JObject parms = default) where TJson : JObject {
-			var response = await _request(method, path, parms);
-			return this.serializer.deserialize<TJson>(await response.Content.ReadAsStringAsync());
+			HttpRequestMessage request = null;
+			HttpResponseMessage response = null;
+			string route = null;
+			string body = null;
+			string content = null;
+			try {
+				request = _request(method, path, parms, out route, out body);
+				response = await this.client.SendAsync(request);
+				content = await response.Content.ReadAsStringAsync();
+				return this.serializer.deserialize<TJson>(content);
+			} catch (Exception ex) {
+				throw new TrakitRestfulException(
+					ex.Message,
+					new TrakitRestfulException.Input($"{method} {route}", body),
+					response == null
+							? null
+							: new TrakitRestfulException.Output(response.StatusCode, response.ReasonPhrase, content),
+					ex
+				);
+			}
+		}
+
+		/// <summary>
+		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
+		/// </summary>
+		/// <typeparam name="TReq">The <see cref="Request"/>for the given request.</typeparam>
+		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
+		/// <param name="message">Request message details.</param>
+		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
+		public async Task<TResp> request<TReq, TResp>(
+			TReq message
+		) where TReq : Request where TResp : Response {
+			HttpRequestMessage request = null;
+			HttpResponseMessage response = null;
+			HttpMethod method = null;
+			string route = null;
+			string body = null;
+			string content = null;
+			try {
+				request = _request(
+					method = message.httpVerb,
+					route = message.httpRoute,
+					this.serializer.convert<TReq, JObject>(message),
+					out route,
+					out body
+				);
+				response = await this.client.SendAsync(request);
+				content = await response.Content.ReadAsStringAsync();
+				return this.serializer.deserialize<TResp>(content);
+			} catch (Exception ex) {
+				throw new TrakitRestfulException(
+					ex.Message,
+					new TrakitRestfulException.Input($"{method} {route}", body),
+					response == null
+							? null
+							: new TrakitRestfulException.Output(response.StatusCode, response.ReasonPhrase, content),
+					ex
+				);
+			}
 		}
 		#endregion Sending - Requests
 
@@ -197,30 +199,25 @@ namespace trakit.https {
 		/// <param name="password">Your password.</param>
 		/// <param name="userAgent">Optional string to identify this software.</param>
 		/// <returns>The <see cref="RespSelfDetails"/>, which contains a <see cref="SelfUser"/> when successful.</returns>
-		public async Task<TrakitRestfulResponse<RespSelfDetails>> login(string username, string password, string userAgent = default) {
+		public async Task<RespSelfDetails> login(string username, string password, string userAgent = default) {
 			var body = new ReqLogin() {
 				username = username,
 				password = password,
 			};
 			if (userAgent != default) body.userAgent = userAgent;
-			var response = await this.request<ReqLogin, RespSelfDetails>(
-				HttpMethod.Post,
-				"self/login",
-				body
-			);
-			this.session = response.body;
-			if (response.body.errorCode == ErrorCode.success && Guid.TryParse(response.body.ghostId, out Guid sessionId)) {
+			this.session = await this.request<ReqLogin, RespSelfDetails>(body);
+			if (this.session.errorCode == ErrorCode.success && Guid.TryParse(this.session.ghostId, out Guid sessionId)) {
 				this.setAuth(sessionId);
 			}
-			return response;
+			return this.session;
 		}
 		/// <summary>
 		/// Sends a logout command, and if successful, removes the current session using <see cref="setAuth()"/>.
 		/// </summary>
 		/// <returns></returns>
-		public async Task<TrakitRestfulResponse<RespLogout>> logout() {
-			var response = await this.request<ReqBlank, RespLogout>(HttpMethod.Post, "self/logout");
-			switch (response.body.errorCode) {
+		public async Task<RespLogout> logout() {
+			var response = await this.request<ReqLogout, RespLogout>(new ReqLogout());
+			switch (response.errorCode) {
 				case ErrorCode.success:
 				case ErrorCode.sessionExpired:
 				case ErrorCode.sessionNotFound:

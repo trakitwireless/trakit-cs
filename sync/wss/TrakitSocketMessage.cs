@@ -63,7 +63,7 @@ namespace trakit.wss {
 		/// <param name="name"></param>
 		/// <param name="body"></param>
 		/// <param name="reason"></param>
-		public TrakitSocketMessage(string name, string body, WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure) {
+		public TrakitSocketMessage(string name, string body, WebSocketCloseStatus reason = WebSocketCloseStatus.Empty) {
 			this.incoming = false;
 			this.name = name;
 			this.body = body;

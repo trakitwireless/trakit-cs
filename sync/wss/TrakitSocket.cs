@@ -14,6 +14,7 @@ using trakit.commands;
 using trakit.hmac;
 using trakit.objects;
 using trakit.tools;
+using static trakit.https.TrakitRestfulException;
 
 namespace trakit.wss {
 	/// <summary>
@@ -421,34 +422,71 @@ namespace trakit.wss {
 		const string SUFFIX = "Response";
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
-		/// This function is useful if the command response is not important.
+		/// This command allows you to work with the API in raw JSON instead of relying no the Trak-iT API <see cref="Output"/> classes.
 		/// </summary>
-		/// <param name="name"></param>
-		/// <param name="parameters"></param>
-		/// <returns></returns>
-		public Task<Response> command(string name, Request parameters) => this.command<Response>(name, parameters);
-		/// <summary>
-		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
-		/// </summary>
-		/// <typeparam name="TResponse"></typeparam>
+		/// <typeparam name="TJson"></typeparam>
 		/// <param name="name"></param>
 		/// <param name="parameters"></param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
-		/// <exception cref="OperationCanceledException"></exception>
-		public Task<TResponse> command<TResponse>(string name, Request parameters) where TResponse : Response {
+		public Task<TJson> command<TJson>(string name, JObject parameters) where TJson : JObject {
 			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
 
 			// let's track this request.
-			parameters.reqId = ++_reqId;
+			parameters["reqId"] = ++_reqId;
 			var outbound = new TrakitSocketMessage(name, this.serializer.serialize(parameters));
+
+			var sauce = new TaskCompletionSource<TJson>();
+			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
+				if (received.name == outbound.name + SUFFIX) {
+					var response = this.serializer.deserialize<TJson>(received.body);
+					if (response["reqId"] == parameters["reqId"]) {
+						this.StatusChanged -= handleDis;
+						this.MessageReceived -= handleMsg;
+						sauce.SetResult(response);
+					}
+				}
+			}
+			void handleDis(TrakitSocket sender) {
+				switch (this.status) {
+					case TrakitSocketStatus.closing:
+					case TrakitSocketStatus.closed:
+						this.MessageReceived -= handleMsg;
+						this.StatusChanged -= handleDis;
+						sauce.SetCanceled();
+						break;
+				}
+			};
+			this.StatusChanged += handleDis;
+			this.MessageReceived += handleMsg;
+
+			// add to outgoing queue
+			var ct = _sauce.Token;
+			return _outgoing.TryAdd(outbound, -1, ct)
+				? sauce.Task
+				: Task.FromCanceled<TJson>(ct);
+		}
+		/// <summary>
+		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
+		/// </summary>
+		/// <typeparam name="TRequest"></typeparam>
+		/// <typeparam name="TResponse"></typeparam>
+		/// <param name="request"></param>
+		/// <returns></returns>
+		/// <exception cref="InvalidOperationException"></exception>
+		public Task<TResponse> command<TRequest, TResponse>(TRequest request) where TRequest : Request where TResponse : Response {
+			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+
+			// let's track this request.
+			request.reqId = ++_reqId;
+			var outbound = new TrakitSocketMessage(request.socketCommand, this.serializer.serialize(request));
 
 			var sauce = new TaskCompletionSource<TResponse>();
 			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
 				if (received.name == outbound.name + SUFFIX) {
 					try {
 						var response = this.serializer.deserialize<TResponse>(received.body);
-						if (response.reqId == parameters.reqId) {
+						if (response.reqId == request.reqId) {
 							this.StatusChanged -= handleDis;
 							this.MessageReceived -= handleMsg;
 							sauce.SetResult(response);
@@ -472,52 +510,10 @@ namespace trakit.wss {
 			this.MessageReceived += handleMsg;
 
 			// add to outgoing queue
-			_outgoing.TryAdd(outbound, -1, _sauce.Token);
-			return sauce.Task;
-		}
-		/// <summary>
-		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
-		/// This command allows you to work with the API in raw JSON instead of relying no the Trak-iT API <see cref="Response"/> classes.
-		/// </summary>
-		/// <typeparam name="TJson"></typeparam>
-		/// <param name="name"></param>
-		/// <param name="parameters"></param>
-		/// <returns></returns>
-		/// <exception cref="InvalidOperationException"></exception>
-		public Task<TJson> command<TJson>(string name, JObject parameters) where TJson : JObject {
-			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
-
-			// let's track this request.
-			parameters["reqId"] = ++_reqId;
-			var message = new TrakitSocketMessage(name, this.serializer.serialize(parameters));
-
-			var sauce = new TaskCompletionSource<TJson>();
-			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
-				if (received.name == message.name + SUFFIX) {
-					var response = this.serializer.deserialize<TJson>(received.body);
-					if (response["reqId"] == parameters["reqId"]) {
-						this.StatusChanged -= handleDis;
-						this.MessageReceived -= handleMsg;
-						sauce.SetResult(response);
-					}
-				}
-			}
-			void handleDis(TrakitSocket sender) {
-				switch (this.status) {
-					case TrakitSocketStatus.closing:
-					case TrakitSocketStatus.closed:
-						this.MessageReceived -= handleMsg;
-						this.StatusChanged -= handleDis;
-						sauce.SetCanceled();
-						break;
-				}
-			};
-			this.StatusChanged += handleDis;
-			this.MessageReceived += handleMsg;
-
-			// add to outgoing queue
-			_outgoing.TryAdd(message, -1, _sauce.Token);
-			return sauce.Task;
+			var ct = _sauce.Token;
+			return _outgoing.TryAdd(outbound, -1, ct)
+				? sauce.Task
+				: Task.FromCanceled<TResponse>(ct);
 		}
 
 		/// <summary>
@@ -527,7 +523,7 @@ namespace trakit.wss {
 		/// <param name="subscriptions"></param>
 		/// <returns></returns>
 		public Task<RespSubscription> subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.command<RespSubscription>("subscribe", new ReqSubscription() {
+			=> this.command<ReqSubscriptionMerge, RespSubscription>(new ReqSubscriptionMerge() {
 				company = new ParamId() { id = company },
 				subscriptionTypes = subscriptions.ToArray()
 			});
@@ -538,7 +534,7 @@ namespace trakit.wss {
 		/// <param name="subscriptions"></param>
 		/// <returns></returns>
 		public Task<RespSubscription> unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.command<RespSubscription>("unsubscribe", new ReqSubscription() {
+			=> this.command<ReqSubscriptionMerge, RespSubscription>(new ReqSubscriptionRemove() {
 				company = new ParamId() { id = company },
 				subscriptionTypes = subscriptions.ToArray()
 			});
@@ -547,7 +543,7 @@ namespace trakit.wss {
 		/// </summary>
 		/// <returns></returns>
 		public Task<RespSubscriptionList> subscriptionList()
-			=> this.command<RespSubscriptionList>("getSubscriptionsList", new ReqBlank());
+			=> this.command<ReqSubscriptionList, RespSubscriptionList>(new ReqSubscriptionList());
 		#endregion Messages - Commands
 
 		#region Events
