@@ -473,47 +473,13 @@ namespace trakit.wss {
 		/// <param name="request"></param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
-		public Task<TResponse> command<TResponse>(Request request) where TResponse : Response {
-			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
-
-			// let's track this request.
-			request.reqId = ++_reqId;
-			var outbound = new TrakitSocketMessage(request.socketCommand, this.serializer.serialize(request));
-
-			var sauce = new TaskCompletionSource<TResponse>();
-			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
-				if (received.name == outbound.name + SUFFIX) {
-					try {
-						var response = this.serializer.deserialize<TResponse>(received.body);
-						if (response.reqId == request.reqId) {
-							this.StatusChanged -= handleDis;
-							this.MessageReceived -= handleMsg;
-							sauce.SetResult(response);
-						}
-					} catch (JsonException ex) {
-						sauce.SetException(ex);
-					}
-				}
-			}
-			void handleDis(TrakitSocket sender) {
-				switch (this.status) {
-					case TrakitSocketStatus.closing:
-					case TrakitSocketStatus.closed:
-						this.MessageReceived -= handleMsg;
-						this.StatusChanged -= handleDis;
-						sauce.SetCanceled();
-						break;
-				}
-			};
-			this.StatusChanged += handleDis;
-			this.MessageReceived += handleMsg;
-
-			// add to outgoing queue
-			var ct = _sauce.Token;
-			return _outgoing.TryAdd(outbound, -1, ct)
-				? sauce.Task
-				: Task.FromCanceled<TResponse>(ct);
-		}
+		public async Task<TResponse> command<TResponse>(Request request) where TResponse : Response
+			=> this.serializer.deconvert<TResponse>(
+				await this.command<JObject>(
+					request.socketCommand,
+					this.serializer.convert<JObject>(request)
+				)
+			);
 
 		/// <summary>
 		/// Subscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.

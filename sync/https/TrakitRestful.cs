@@ -168,7 +168,7 @@ namespace trakit.https {
 				request = _request(
 					method = message.httpVerb,
 					route = message.httpRoute,
-					this.serializer.convert<Request, JObject>(message),
+					this.serializer.convert<JObject>(message),
 					out route,
 					out body
 				);
