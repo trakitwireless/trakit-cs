@@ -421,62 +421,34 @@ namespace trakit.wss {
 		const string RESPONSE_SUFFIX = "Response";
 		// converts the Request type into a WebSocket command name
 		static string _getCommandName<TRequest>(TRequest request) where TRequest : Request {
-			string typeName = typeof(TRequest).Name,
-				objName = null,
-				cmdName = null;
-			switch (typeName) {
-				case "ReqLogin":
-					return "login";
-				case "ReqLogout":
-					return "logout";
-				case "ReqSubscriptionMerge":
-					return "subscribe";
-				case "ReqSubscriptionDelete":
-				case "ReqSubscriptionRemove":
-					return "unsubscribe";
-					//case "ReqSubscriptionList":
-					//	return "getSubscriptionList";
-			}
-			var matches = Request.SPLITTER.Match(typeName)
-									.Groups
-									.Cast<Group>()
-									.Skip(1)
-									.ToArray();
-			if (matches.Length > 1) {
-				if (matches[1].Success) {
-					objName = matches[1].Value;
-					//switch (matches[1].Value) {
-					//	case "Subscription":
-					//		objName = "";
-					//		break;
-					//	default:
-					//		objName = matches[1].Value;
-					//		break;
-					//}
-				}
-				if (matches[2].Success) {
-					cmdName = matches[2].Value.ToLowerInvariant();
-					switch (matches[2].Value) {
-						case "get":
-						case "merge":
-						case "restore":
-						case "suspend":
-						case "revive":
-						default:
-							return cmdName + objName;
-						case "delete":
-						case "remove":
-							return $"remove{objName}";
-						case "list":
-							cmdName = $"get{text.plural(objName)}";
-							if (matches.Length > 2 && matches[3].Success) {
-								if (matches[3].Value != "ByCompany") cmdName += matches[3].Value;
-							}
-							return cmdName;
-					}
+			var matches = request.getNameParts();
+			if (matches.Length >= 2) {
+				string objName = matches[0],
+					cmdName = matches[1].ToLowerInvariant();
+				switch (cmdName) {
+					case "login":
+					case "logout":
+						return cmdName;
+
+					case "get":
+					case "merge":
+					case "restore":
+					case "suspend":
+					case "revive":
+					default:
+						return cmdName + objName;
+					case "delete":
+					case "remove":
+						return "remove" + objName;
+					case "list":
+						cmdName = "get" + text.plural(objName);
+						if (matches.Length > 2 && matches[2] != "ByCompany") {
+							cmdName += matches[2];
+						}
+						return cmdName;
 				}
 			}
-			throw new NotImplementedException($"no command supported for {typeName}");
+			throw new NotImplementedException($"no command supported for {typeof(TRequest).Name}");
 		}
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.

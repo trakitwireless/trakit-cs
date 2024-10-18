@@ -94,34 +94,71 @@ namespace trakit.https {
 
 		#region Sending - Requests
 		//
+		static readonly Regex SPLITTER = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
+		// 
+		void _requestHttp<TRequest>(TRequest request, out HttpMethod method, out string route) where TRequest : Request {
+			method = default;
+			route = default;
+			var matches = request.getNameParts();
+			if (matches.Length > 1) {
+				var objNames = SPLITTER.Split(matches[0]).Select(s => text.plural(s)).ToArray();
+				route = string.Join("/", objNames);
+				switch (matches[1]) {
+					case "Get":
+						method = HttpMethod.Get;
+						if (request is IReqSingle single) {
+							route = objNames[0]
+								+ single.getKey()
+								+ string.Join("/", objNames.Skip(1));
+						}
+						break;
+					case "List":
+						method = HttpMethod.Get;
+						if (request is IReqListByCompany byCompany) {
+							route = $"companies/{byCompany.company.id}/{route}";
+						}
+						break;
+					case "Restore":
+						method = new HttpMethod("PATCH");
+						route += "/restore";
+						break;
+					case "BatchMerge":
+						method = new HttpMethod("PATCH");
+						break;
+					case "BatchSuspend":
+						method = new HttpMethod("PATCH");
+						route += "/suspend";
+						break;
+					case "BatchRevive":
+						method = new HttpMethod("PATCH");
+						route += "/revive";
+						break;
+					case "Delete":
+						method = HttpMethod.Delete;
+						break;
+					case "BatchDelete":
+						method = HttpMethod.Delete;
+						break;
+					case "Merge":
+						method = HttpMethod.Post;
+						break;
+					case "Login":
+						method = HttpMethod.Post;
+						break;
+					case "Logout":
+						method = HttpMethod.Post;
+						break;
+				}
+			}
+			if (method == default || string.IsNullOrEmpty(route)) {
+				throw new NotImplementedException($"no verb supported for {request.GetType().Name}");
+			}
+		}
+		//
 		HttpMethod _requestMethod<TRequest>(TRequest request) where TRequest : Request {
 			string typeName = typeof(TRequest).Name;
-			if (
-				typeName.EndsWith("Get")
-				|| typeName.EndsWith("List")
-			) {
-				return HttpMethod.Get;
-			}
-			if (
-				typeName.EndsWith("Restore")
-				|| typeName.EndsWith("BatchMerge")
-			) {
-				return new HttpMethod("PATCH");
-			}
-			if (
-				typeName.EndsWith("Delete")
-				|| typeName.EndsWith("BatchDelete")
-			) {
-				return HttpMethod.Delete;
-			}
-			if (
-				typeName.EndsWith("Merge")
-				|| typeName.EndsWith("Login")
-				|| typeName.EndsWith("Logout")
-			) {
-				return HttpMethod.Post;
-			}
-			throw new NotImplementedException($"no verbsupported for {typeName}");
+			var matches = request.getNameParts();
+			throw new NotImplementedException($"no verb supported for {typeName}");
 		}
 		//
 		string _requestRoute<TRequest>(TRequest request) where TRequest : Request {
@@ -137,12 +174,7 @@ namespace trakit.https {
 				case "ReqSubscriptionList":
 					throw new NotImplementedException($"{typeName} only supported by TrakitSocket");
 			}
-			var matches = Request.SPLITTER.Match(typeName)
-									.Groups
-									.Cast<Group>()
-									.Skip(1)
-									.ToArray();
-
+			var matches = request.getNameParts();
 			throw new NotImplementedException($"no route supported for {typeName}");
 		}
 		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
@@ -230,7 +262,7 @@ namespace trakit.https {
 		/// <param name="userAgent">Optional string to identify this software.</param>
 		/// <returns>The <see cref="RespSelfDetails"/>, which contains a <see cref="SelfUser"/> when successful.</returns>
 		public async Task<RespSelfDetails> login(string username, string password, string userAgent = default) {
-			var body = new ReqLogin() {
+			var body = new ReqSelfLogin() {
 				username = username,
 				password = password,
 			};
@@ -246,7 +278,7 @@ namespace trakit.https {
 		/// </summary>
 		/// <returns></returns>
 		public async Task<RespLogout> logout() {
-			var response = await this.request<RespLogout>(new ReqLogout());
+			var response = await this.request<RespLogout>(new ReqSelfLogout());
 			switch (response.errorCode) {
 				case ErrorCode.success:
 				case ErrorCode.sessionExpired:
