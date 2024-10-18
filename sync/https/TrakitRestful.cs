@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
@@ -91,6 +93,31 @@ namespace trakit.https {
 		#endregion Authorization
 
 		#region Sending - Requests
+		//
+		Regex REQUEST_NAME = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
+		//
+		HttpMethod _requestMethod<TRequest>(TRequest request) {
+			string name = typeof(TRequest).Name;
+			var suffix = REQUEST_NAME.Matches(name).Cast<Match>().LastOrDefault()?.Value;
+			switch (suffix) {
+				case "List":
+				case "Get":
+					return HttpMethod.Get;
+				case "Merge":
+					return HttpMethod.Post;
+				case "Restore":
+				case "BatchMerge":
+					return new HttpMethod("PATCH");
+				case "Delete":
+				case "BatchDelete":
+					return HttpMethod.Delete;
+			}
+			throw new NotImplementedException($"no verbsupported for {name}");
+		}
+		string _requestRoute<TRequest>(TRequest request) {
+			string name = typeof(TRequest).Name;
+			throw new NotImplementedException($"no route supported for {name}");
+		}
 		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
 		HttpRequestMessage _request(HttpMethod method, string path, JObject body, out string route, out string content) {
 			_reqId++; // always
@@ -157,35 +184,14 @@ namespace trakit.https {
 		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
 		/// <param name="message">Request message details.</param>
 		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public async Task<TResp> request<TResp>(Request message) where TResp : Response {
-			HttpRequestMessage request = null;
-			HttpResponseMessage response = null;
-			HttpMethod method = null;
-			string route = null;
-			string body = null;
-			string content = null;
-			try {
-				request = _request(
-					method = message.httpVerb,
-					route = message.httpRoute,
-					this.serializer.convert<JObject>(message),
-					out route,
-					out body
-				);
-				response = await this.client.SendAsync(request);
-				content = await response.Content.ReadAsStringAsync();
-				return this.serializer.deserialize<TResp>(content);
-			} catch (Exception ex) {
-				throw new TrakitRestfulException(
-					ex.Message,
-					new TrakitRestfulException.Input($"{method} {route}", body),
-					response == null
-							? null
-							: new TrakitRestfulException.Output(response.StatusCode, response.ReasonPhrase, content),
-					ex
-				);
-			}
-		}
+		public async Task<TResp> request<TResp>(Request message) where TResp : Response
+			=> this.serializer.deconvert<TResp>(
+				await this.request<JObject>(
+					_requestMethod(message),
+					_requestRoute(message),
+					this.serializer.convert<JObject>(message)
+				)
+			);
 		#endregion Sending - Requests
 
 		#region Self

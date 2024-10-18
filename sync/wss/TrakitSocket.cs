@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
@@ -420,6 +421,21 @@ namespace trakit.wss {
 		#region Messages - Commands
 		// command name reply suffix
 		const string SUFFIX = "Response";
+		//
+		Regex REQUEST_NAME = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
+		//
+		string _getCommandName<TRequest>(TRequest request) {
+			string name = typeof(TRequest).Name;
+			var matches = REQUEST_NAME.Matches(name).Cast<Match>().ToArray();
+
+			switch (name) {
+				case "ReqLogin":
+					return "login";
+				case "ReqLogout":
+					return "logout";
+			}
+			throw new NotImplementedException($"no command supported for {name}");
+		}
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
 		/// This command allows you to work with the API in raw JSON instead of relying no the Trak-iT API <see cref="Output"/> classes.
@@ -476,7 +492,7 @@ namespace trakit.wss {
 		public async Task<TResponse> command<TResponse>(Request request) where TResponse : Response
 			=> this.serializer.deconvert<TResponse>(
 				await this.command<JObject>(
-					request.socketCommand,
+					_getCommandName(request),
 					this.serializer.convert<JObject>(request)
 				)
 			);
