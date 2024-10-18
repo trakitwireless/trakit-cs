@@ -244,11 +244,11 @@ namespace trakit.https {
 		/// <param name="message">Request message details.</param>
 		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
 		public async Task<TResp> request<TResp>(Request message) where TResp : Response
-			=> this.serializer.deconvert<TResp>(
+			=> this.serializer.convertFrom<TResp>(
 				await this.request<JObject>(
 					_requestMethod(message),
 					_requestRoute(message),
-					this.serializer.convert<JObject>(message)
+					this.serializer.convertTo<JObject>(message)
 				)
 			);
 		#endregion Sending - Requests

@@ -504,10 +504,10 @@ namespace trakit.wss {
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
 		public async Task<TResponse> command<TResponse>(Request request) where TResponse : Response
-			=> this.serializer.deconvert<TResponse>(
+			=> this.serializer.convertFrom<TResponse>(
 				await this.command<JObject>(
 					_getCommandName(request),
-					this.serializer.convert<JObject>(request)
+					this.serializer.convertTo<JObject>(request)
 				)
 			);
 
