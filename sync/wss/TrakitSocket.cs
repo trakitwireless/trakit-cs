@@ -417,35 +417,66 @@ namespace trakit.wss {
 		}
 		#endregion Messages - Sending
 		#region Messages - Commands
-		//
-		Regex COMMAND_NAME = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
 		// command name reply suffix
 		const string RESPONSE_SUFFIX = "Response";
-		//
-		string _getCommandName<TRequest>(TRequest request) {
-			string name = typeof(TRequest).Name;
-			switch (name) {
+		// converts the Request type into a WebSocket command name
+		static string _getCommandName<TRequest>(TRequest request) where TRequest : Request {
+			string typeName = typeof(TRequest).Name,
+				objName = null,
+				cmdName = null;
+			switch (typeName) {
 				case "ReqLogin":
 					return "login";
 				case "ReqLogout":
 					return "logout";
-				case "ReqSubscriptionList":
-					return "getSubscriptionList";
 				case "ReqSubscriptionMerge":
 					return "subscribe";
+				case "ReqSubscriptionDelete":
 				case "ReqSubscriptionRemove":
 					return "unsubscribe";
+					//case "ReqSubscriptionList":
+					//	return "getSubscriptionList";
 			}
-			var matches = COMMAND_NAME.Matches(name).Cast<Match>().ToArray();
-			if (matches.Length >= 3) {
-				// ReqAssetGet
-				// ReqProviderGeneralList
-				return matches[2].Value.ToLowerInvariant()
-					+ matches[1].Value
-					+ matches[1].Value;
+			var matches = Request.SPLITTER.Match(typeName)
+									.Groups
+									.Cast<Group>()
+									.Skip(1)
+									.ToArray();
+			if (matches.Length > 1) {
+				if (matches[1].Success) {
+					objName = matches[1].Value;
+					//switch (matches[1].Value) {
+					//	case "Subscription":
+					//		objName = "";
+					//		break;
+					//	default:
+					//		objName = matches[1].Value;
+					//		break;
+					//}
+				}
+				if (matches[2].Success) {
+					cmdName = matches[2].Value.ToLowerInvariant();
+					switch (matches[2].Value) {
+						case "get":
+						case "merge":
+						case "restore":
+						case "suspend":
+						case "revive":
+						default:
+							return cmdName + objName;
+						case "delete":
+						case "remove":
+							return $"remove{objName}";
+						case "list":
+							cmdName = $"get{text.plural(objName)}";
+							if (matches.Length > 2 && matches[3].Success) {
+								if (matches[3].Value != "ByCompany") cmdName += matches[3].Value;
+							}
+							return cmdName;
+					}
+				}
 			}
-
-			throw new NotImplementedException($"no command supported for {name}");
+			throw new NotImplementedException($"no command supported for {typeName}");
 		}
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.

@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
@@ -92,39 +94,56 @@ namespace trakit.https {
 
 		#region Sending - Requests
 		//
-		HttpMethod _requestMethod<TRequest>(TRequest request) {
-			string name = typeof(TRequest).Name;
-
+		HttpMethod _requestMethod<TRequest>(TRequest request) where TRequest : Request {
+			string typeName = typeof(TRequest).Name;
 			if (
-				name.EndsWith("Get")
-				|| name.EndsWith("List")
+				typeName.EndsWith("Get")
+				|| typeName.EndsWith("List")
 			) {
 				return HttpMethod.Get;
 			}
 			if (
-				name.EndsWith("Restore")
-				|| name.EndsWith("BatchMerge")
+				typeName.EndsWith("Restore")
+				|| typeName.EndsWith("BatchMerge")
 			) {
 				return new HttpMethod("PATCH");
 			}
 			if (
-				name.EndsWith("Delete")
-				|| name.EndsWith("BatchDelete")
+				typeName.EndsWith("Delete")
+				|| typeName.EndsWith("BatchDelete")
 			) {
 				return HttpMethod.Delete;
 			}
 			if (
-				name.EndsWith("Merge")
-				|| name.EndsWith("Login")
-				|| name.EndsWith("Logout")
+				typeName.EndsWith("Merge")
+				|| typeName.EndsWith("Login")
+				|| typeName.EndsWith("Logout")
 			) {
 				return HttpMethod.Post;
 			}
-			throw new NotImplementedException($"no verbsupported for {name}");
+			throw new NotImplementedException($"no verbsupported for {typeName}");
 		}
-		string _requestRoute<TRequest>(TRequest request) {
-			string name = typeof(TRequest).Name;
-			throw new NotImplementedException($"no route supported for {name}");
+		//
+		string _requestRoute<TRequest>(TRequest request) where TRequest : Request {
+			string typeName = typeof(TRequest).Name;
+			switch (typeName) {
+				case "ReqLogin":
+					return "self/login";
+				case "ReqLogout":
+					return "self/logout";
+				case "ReqSubscriptionMerge":
+				case "ReqSubscriptionDelete":
+				case "ReqSubscriptionRemove":
+				case "ReqSubscriptionList":
+					throw new NotImplementedException($"{typeName} only supported by TrakitSocket");
+			}
+			var matches = Request.SPLITTER.Match(typeName)
+									.Groups
+									.Cast<Group>()
+									.Skip(1)
+									.ToArray();
+
+			throw new NotImplementedException($"no route supported for {typeName}");
 		}
 		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
 		HttpRequestMessage _request(HttpMethod method, string path, JObject body, out string route, out string content) {
