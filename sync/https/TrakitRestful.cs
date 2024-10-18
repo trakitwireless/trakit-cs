@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Linq;
 using System.Net.Http;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
@@ -94,23 +92,33 @@ namespace trakit.https {
 
 		#region Sending - Requests
 		//
-		Regex REQUEST_NAME = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
-		//
 		HttpMethod _requestMethod<TRequest>(TRequest request) {
 			string name = typeof(TRequest).Name;
-			var suffix = REQUEST_NAME.Matches(name).Cast<Match>().LastOrDefault()?.Value;
-			switch (suffix) {
-				case "List":
-				case "Get":
-					return HttpMethod.Get;
-				case "Merge":
-					return HttpMethod.Post;
-				case "Restore":
-				case "BatchMerge":
-					return new HttpMethod("PATCH");
-				case "Delete":
-				case "BatchDelete":
-					return HttpMethod.Delete;
+
+			if (
+				name.EndsWith("Get")
+				|| name.EndsWith("List")
+			) {
+				return HttpMethod.Get;
+			}
+			if (
+				name.EndsWith("Restore")
+				|| name.EndsWith("BatchMerge")
+			) {
+				return new HttpMethod("PATCH");
+			}
+			if (
+				name.EndsWith("Delete")
+				|| name.EndsWith("BatchDelete")
+			) {
+				return HttpMethod.Delete;
+			}
+			if (
+				name.EndsWith("Merge")
+				|| name.EndsWith("Login")
+				|| name.EndsWith("Logout")
+			) {
+				return HttpMethod.Post;
 			}
 			throw new NotImplementedException($"no verbsupported for {name}");
 		}

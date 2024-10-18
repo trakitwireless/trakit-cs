@@ -8,8 +8,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Linq;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
 using trakit.hmac;
@@ -419,21 +417,34 @@ namespace trakit.wss {
 		}
 		#endregion Messages - Sending
 		#region Messages - Commands
-		// command name reply suffix
-		const string SUFFIX = "Response";
 		//
-		Regex REQUEST_NAME = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
+		Regex COMMAND_NAME = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
+		// command name reply suffix
+		const string RESPONSE_SUFFIX = "Response";
 		//
 		string _getCommandName<TRequest>(TRequest request) {
 			string name = typeof(TRequest).Name;
-			var matches = REQUEST_NAME.Matches(name).Cast<Match>().ToArray();
-
 			switch (name) {
 				case "ReqLogin":
 					return "login";
 				case "ReqLogout":
 					return "logout";
+				case "ReqSubscriptionList":
+					return "getSubscriptionList";
+				case "ReqSubscriptionMerge":
+					return "subscribe";
+				case "ReqSubscriptionRemove":
+					return "unsubscribe";
 			}
+			var matches = COMMAND_NAME.Matches(name).Cast<Match>().ToArray();
+			if (matches.Length >= 3) {
+				// ReqAssetGet
+				// ReqProviderGeneralList
+				return matches[2].Value.ToLowerInvariant()
+					+ matches[1].Value
+					+ matches[1].Value;
+			}
+
 			throw new NotImplementedException($"no command supported for {name}");
 		}
 		/// <summary>
@@ -454,7 +465,7 @@ namespace trakit.wss {
 
 			var sauce = new TaskCompletionSource<TJson>();
 			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
-				if (received.name == outbound.name + SUFFIX) {
+				if (received.name == outbound.name + RESPONSE_SUFFIX) {
 					var response = this.serializer.deserialize<TJson>(received.body);
 					if (response["reqId"] == parameters["reqId"]) {
 						this.StatusChanged -= handleDis;
