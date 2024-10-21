@@ -425,6 +425,19 @@ namespace trakit.wss {
 			if (matches.Length >= 2) {
 				string objName = matches[0],
 					cmdName = matches[1].ToLowerInvariant();
+				switch (objName) {
+					case "Subscription":
+						switch (cmdName) {
+							case "merge":
+								return "subscribe";
+							case "delete":
+							case "remove":
+								return "unsubscribe";
+							case "list":
+								return "getSubscriptionsList";
+						}
+						break;
+				}
 				switch (cmdName) {
 					case "login":
 					case "logout":
