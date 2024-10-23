@@ -416,7 +416,8 @@ namespace trakit.wss {
 			) ?? Task.CompletedTask);
 		}
 		#endregion Messages - Sending
-		#region Messages - Commands
+
+		#region Commands
 		// command name reply suffix
 		const string RESPONSE_SUFFIX = "Response";
 		// converts the Request type into a WebSocket command name
@@ -454,7 +455,7 @@ namespace trakit.wss {
 					case "remove":
 						return "remove" + objName;
 					case "list":
-						cmdName = "get" + text.plural(objName);
+						cmdName = "get" + text.plural(objName) + "List";
 						if (matches.Length > 2 && matches[2] != "ByCompany") {
 							cmdName += matches[2];
 						}
@@ -523,7 +524,8 @@ namespace trakit.wss {
 					this.serializer.convertTo<JObject>(request)
 				)
 			);
-
+		#endregion Commands
+		#region Commands - Self
 		/// <summary>
 		/// Subscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.
 		/// </summary>
@@ -552,7 +554,7 @@ namespace trakit.wss {
 		/// <returns></returns>
 		public Task<RespSubscriptionList> subscriptionList()
 			=> this.command<RespSubscriptionList>(new ReqSubscriptionList());
-		#endregion Messages - Commands
+		#endregion Commands - Self
 
 		#region Events
 		/// <summary>

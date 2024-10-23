@@ -92,15 +92,24 @@ namespace trakit.https {
 		}
 		#endregion Authorization
 
-		#region Sending - Requests
-		//
+		#region Commands
+		// used to split object names into paths
 		static readonly Regex SPLITTER = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
-		// 
-		void _requestHttp<TRequest>(TRequest request, out HttpMethod method, out string route) where TRequest : Request {
+		// outs the verb and path for the given request
+		void _commandHttp<TRequest>(TRequest request, out HttpMethod method, out string route) where TRequest : Request {
 			method = default;
 			route = default;
 			var matches = request.getNameParts();
 			if (matches.Length > 1) {
+				switch (matches[0]) {
+					case "Self":
+						method = HttpMethod.Post;
+						route = (matches[0] + "/" + matches[1]).ToLowerInvariant();
+						return;
+					case "Subscription":
+						throw new NotImplementedException($"{matches[0]} only supported by TrakitSocket");
+				}
+
 				var objNames = SPLITTER.Split(matches[0]).Select(s => text.plural(s)).ToArray();
 				route = string.Join("/", objNames);
 				switch (matches[1]) {
@@ -134,51 +143,20 @@ namespace trakit.https {
 						route += "/revive";
 						break;
 					case "Delete":
-						method = HttpMethod.Delete;
-						break;
 					case "BatchDelete":
 						method = HttpMethod.Delete;
 						break;
 					case "Merge":
 						method = HttpMethod.Post;
 						break;
-					case "Login":
-						method = HttpMethod.Post;
-						break;
-					case "Logout":
-						method = HttpMethod.Post;
-						break;
 				}
 			}
 			if (method == default || string.IsNullOrEmpty(route)) {
-				throw new NotImplementedException($"no verb supported for {request.GetType().Name}");
+				throw new NotImplementedException($"no verb and/or route supported for {request.GetType().Name}");
 			}
-		}
-		//
-		HttpMethod _requestMethod<TRequest>(TRequest request) where TRequest : Request {
-			string typeName = typeof(TRequest).Name;
-			var matches = request.getNameParts();
-			throw new NotImplementedException($"no verb supported for {typeName}");
-		}
-		//
-		string _requestRoute<TRequest>(TRequest request) where TRequest : Request {
-			string typeName = typeof(TRequest).Name;
-			switch (typeName) {
-				case "ReqLogin":
-					return "self/login";
-				case "ReqLogout":
-					return "self/logout";
-				case "ReqSubscriptionMerge":
-				case "ReqSubscriptionDelete":
-				case "ReqSubscriptionRemove":
-				case "ReqSubscriptionList":
-					throw new NotImplementedException($"{typeName} only supported by TrakitSocket");
-			}
-			var matches = request.getNameParts();
-			throw new NotImplementedException($"no route supported for {typeName}");
 		}
 		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
-		HttpRequestMessage _request(HttpMethod method, string path, JObject body, out string route, out string content) {
+		HttpRequestMessage _command(HttpMethod method, string path, JObject body, out string route, out string content) {
 			_reqId++; // always
 			var request = new HttpRequestMessage(method, path);
 			path = $"{this.baseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
@@ -206,7 +184,6 @@ namespace trakit.https {
 			route = request.RequestUri.ToString();
 			return request;
 		}
-
 		/// <summary>
 		/// Sends a raw JSON request to the Trak-iT RESTful API and returns a task whose result is also JSON.
 		/// </summary>
@@ -214,14 +191,14 @@ namespace trakit.https {
 		/// <param name="path">The relative path from the <see cref="baseAddress"/> for this request.</param>
 		/// <param name="parms">Optional request parameters.</param>
 		/// <returns>The JSON which appears in the body of the response.</returns>
-		public async Task<TJson> request<TJson>(HttpMethod method, string path, JObject parms = default) where TJson : JObject {
+		public async Task<TJson> command<TJson>(HttpMethod method, string path, JObject parms = default) where TJson : JObject {
 			HttpRequestMessage request = null;
 			HttpResponseMessage response = null;
 			string route = null;
 			string body = null;
 			string content = null;
 			try {
-				request = _request(method, path, parms, out route, out body);
+				request = _command(method, path, parms, out route, out body);
 				response = await this.client.SendAsync(request);
 				content = await response.Content.ReadAsStringAsync();
 				return this.serializer.deserialize<TJson>(content);
@@ -236,24 +213,24 @@ namespace trakit.https {
 				);
 			}
 		}
-
 		/// <summary>
 		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
 		/// </summary>
 		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
-		/// <param name="message">Request message details.</param>
+		/// <param name="request">Request message details.</param>
 		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public async Task<TResp> request<TResp>(Request message) where TResp : Response
-			=> this.serializer.convertFrom<TResp>(
-				await this.request<JObject>(
-					_requestMethod(message),
-					_requestRoute(message),
-					this.serializer.convertTo<JObject>(message)
+		public async Task<TResp> command<TResp>(Request request) where TResp : Response {
+			_commandHttp(request, out HttpMethod method, out string route);
+			return this.serializer.convertFrom<TResp>(
+				await this.command<JObject>(
+					method,
+					route,
+					this.serializer.convertTo<JObject>(request)
 				)
 			);
-		#endregion Sending - Requests
-
-		#region Self
+		}
+		#endregion Commands
+		#region Commands - Self
 		/// <summary>
 		/// Sends a login command, and if successful, saves the <see cref="RespSelfDetails.ghostId"/> as the authentication mechanism for all further requests.
 		/// </summary>
@@ -267,7 +244,7 @@ namespace trakit.https {
 				password = password,
 			};
 			if (userAgent != default) body.userAgent = userAgent;
-			this.session = await this.request<RespSelfDetails>(body);
+			this.session = await this.command<RespSelfDetails>(body);
 			if (this.session.errorCode == ErrorCode.success && Guid.TryParse(this.session.ghostId, out Guid sessionId)) {
 				this.setAuth(sessionId);
 			}
@@ -278,7 +255,7 @@ namespace trakit.https {
 		/// </summary>
 		/// <returns></returns>
 		public async Task<RespSelfLogout> logout() {
-			var response = await this.request<RespSelfLogout>(new ReqSelfLogout());
+			var response = await this.command<RespSelfLogout>(new ReqSelfLogout());
 			switch (response.errorCode) {
 				case ErrorCode.success:
 				case ErrorCode.sessionExpired:
@@ -288,6 +265,6 @@ namespace trakit.https {
 			}
 			return response;
 		}
-		#endregion Self
+		#endregion Commands - Self
 	}
 }
