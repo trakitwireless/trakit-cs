@@ -554,6 +554,42 @@ namespace trakit.wss {
 		/// <returns></returns>
 		public Task<RespSubscriptionList> subscriptionList()
 			=> this.command<RespSubscriptionList>(new ReqSubscriptionList());
+
+		/// <summary>
+		/// Sends a login command, and if successful, saves the <see cref="RespSelfDetails.ghostId"/> as the authentication mechanism for all further requests.
+		/// </summary>
+		/// <param name="username">Your email address.</param>
+		/// <param name="password">Your password.</param>
+		/// <param name="userAgent">Optional string to identify this software.</param>
+		/// <returns>The <see cref="RespSelfDetails"/>, which contains a <see cref="SelfUser"/> when successful.</returns>
+		public async Task<RespSelfDetails> login(string username, string password, string userAgent = default) {
+			var body = new ReqSelfLogin() {
+				username = username,
+				password = password,
+			};
+			if (userAgent != default) body.userAgent = userAgent;
+			this.session = await this.command<RespSelfDetails>(body);
+			if (this.session.errorCode == ErrorCode.success && Guid.TryParse(this.session.ghostId, out Guid sessionId)) {
+				this.setAuth(sessionId);
+			}
+			return this.session;
+		}
+		/// <summary>
+		/// Sends a logout command, and if successful, removes the current session using <see cref="setAuth()"/>.
+		/// </summary>
+		/// <returns></returns>
+		public async Task<RespSelfLogout> logout() {
+			var response = await this.command<RespSelfLogout>(new ReqSelfLogout());
+			switch (response.errorCode) {
+				case ErrorCode.success:
+				case ErrorCode.sessionExpired:
+				case ErrorCode.sessionNotFound:
+					this.setAuth();
+					this.session = default;
+					break;
+			}
+			return response;
+		}
 		#endregion Commands - Self
 
 		#region Events

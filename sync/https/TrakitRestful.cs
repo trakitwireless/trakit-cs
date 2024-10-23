@@ -261,6 +261,7 @@ namespace trakit.https {
 				case ErrorCode.sessionExpired:
 				case ErrorCode.sessionNotFound:
 					this.setAuth();
+					this.session = default;
 					break;
 			}
 			return response;
