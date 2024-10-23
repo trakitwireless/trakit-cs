@@ -167,6 +167,7 @@ namespace trakit.wss {
 		public async Task connect(IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
 			if (this.status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.status}.");
 
+			_shutter = null;
 			this.client = new ClientWebSocket();
 			_sauce = new CancellationTokenSource();
 			_outgoing = new BlockingCollection<TrakitSocketMessage>();
@@ -266,8 +267,7 @@ namespace trakit.wss {
 			client.Abort();
 			client.Dispose();
 			_receiver =
-			_sender =
-			_shutter = null;
+			_sender = null;
 			_first = true;
 
 			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
