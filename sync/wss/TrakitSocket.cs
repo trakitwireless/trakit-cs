@@ -196,16 +196,16 @@ namespace trakit.wss {
 			} else {
 				uri += $"{(uri.Contains("?") ? "&" : "?")}ghostId={_sessionId}";
 			}
+			var source = ct.HasValue
+					? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value)
+					: _sauce;
 			try {
-				var conn = this.client.ConnectAsync(
-					new Uri(uri),
-					ct.HasValue
-						? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value).Token
-						: _sauce.Token
-				);
 				_onStatus(TrakitSocketStatus.opening);
-				await conn;
-				conn = _connecting();
+				await this.client.ConnectAsync(
+					new Uri(uri),
+					source.Token
+				);
+				var conn = _connecting();
 				_receiver = Task.Run(_receiving, _sauce.Token);
 				_sender = Task.Run(_sending, _sauce.Token);
 				await conn;
@@ -213,6 +213,7 @@ namespace trakit.wss {
 				_onStatus(TrakitSocketStatus.closed);
 				throw;
 			}
+			source?.Dispose();
 		}
 		/// <summary>
 		/// Initiates a disconnection of the Trak-iT <see cref="WebSocket"/> service.
@@ -256,8 +257,8 @@ namespace trakit.wss {
 		async Task _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
 			_sauce.Cancel();
 			_outgoing.CompleteAdding();
-			try { await _sender; } catch { } finally { _sender?.Dispose(); }
-			try { await _receiver; } catch { } finally { _receiver?.Dispose(); }
+			try { await _sender; } catch { _sender = null; } finally { _sender?.Dispose(); }
+			try { await _receiver; } catch { _receiver = null; } finally { _receiver?.Dispose(); }
 			_outgoing.Dispose();
 			_outgoing = null;
 			_sauce.Dispose();
