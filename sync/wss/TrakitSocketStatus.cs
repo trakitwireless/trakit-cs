@@ -12,7 +12,7 @@ namespace trakit.wss {
 		/// <summary>
 		/// A connection is established and the <c>connectionResponse</c> message has been received.
 		/// </summary>
-		open,
+		opened,
 		/// <summary>
 		/// Either the client or the server has initiated a disconnection.
 		/// </summary>

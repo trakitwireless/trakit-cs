@@ -127,7 +127,7 @@ namespace trakit.wss {
 			var sauce = new TaskCompletionSource<bool>();
 			void handler(TrakitSocket sender) {
 				this.StatusChanged -= handler;
-				if (this.status == TrakitSocketStatus.open) {
+				if (this.status == TrakitSocketStatus.opened) {
 					sauce.SetResult(true);
 				} else {
 					sauce.SetCanceled();
@@ -201,19 +201,20 @@ namespace trakit.wss {
 					: _sauce;
 			try {
 				_onStatus(TrakitSocketStatus.opening);
-				await this.client.ConnectAsync(
-					new Uri(uri),
-					source.Token
-				);
+				await this.client.ConnectAsync(new Uri(uri), source.Token);
 				var conn = _connecting();
-				_receiver = Task.Run(_receiving, _sauce.Token);
-				_sender = Task.Run(_sending, _sauce.Token);
+				_receiver = Task.Run(_receiving, source.Token);
+				_sender = Task.Run(_sending, source.Token);
 				await conn;
 			} catch {
-				_onStatus(TrakitSocketStatus.closed);
+				source.Cancel();
+				source.Dispose();
+				lock (_statlock) {
+					this.status = TrakitSocketStatus.closed;
+					this.StatusChanged?.Invoke(this);
+				}
 				throw;
 			}
-			source?.Dispose();
 		}
 		/// <summary>
 		/// Initiates a disconnection of the Trak-iT <see cref="WebSocket"/> service.
@@ -229,7 +230,7 @@ namespace trakit.wss {
 			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
 			string message = BYEBYE
 		) {
-			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+			if (this.status != TrakitSocketStatus.opened) throw new InvalidOperationException($"connection is {this.status}.");
 
 			_closer = new TrakitSocketMessage(message, string.Empty, reason);
 			_outgoing.TryAdd(_closer, -1, _sauce.Token);
@@ -305,7 +306,7 @@ namespace trakit.wss {
 							if (_first && msg.name == "connectionResponse") {
 								_first = false;
 								this.session = this.serializer.deserialize<RespSelfDetails>(msg.body);
-								_onStatus(TrakitSocketStatus.open);
+								_onStatus(TrakitSocketStatus.opened);
 							}
 							this.MessageReceived?.Invoke(this, msg);
 							break;
@@ -475,7 +476,7 @@ namespace trakit.wss {
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
 		public Task<TJson> command<TJson>(string name, JObject parameters) where TJson : JObject {
-			if (this.status != TrakitSocketStatus.open) throw new InvalidOperationException($"connection is {this.status}.");
+			if (this.status != TrakitSocketStatus.opened) throw new InvalidOperationException($"connection is {this.status}.");
 
 			// let's track this request.
 			parameters["reqId"] = ++_reqId;
@@ -627,7 +628,7 @@ namespace trakit.wss {
 					this.status = status;
 					this.StatusChanged?.Invoke(this);
 					switch (status) {
-						case TrakitSocketStatus.open:
+						case TrakitSocketStatus.opened:
 							this.Connected?.Invoke(this);
 							break;
 						case TrakitSocketStatus.closed:
