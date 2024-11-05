@@ -86,9 +86,11 @@ namespace trakit.wss {
 		public void Dispose() {
 			var wss = this.client;
 			_sauce?.Cancel();
+			_outgoing?.CompleteAdding();
 			this.client = null;
 			wss?.Abort();
 			wss?.Dispose();
+			_outgoing?.Dispose();
 		}
 
 		#region Authorization
@@ -232,7 +234,7 @@ namespace trakit.wss {
 		) {
 			if (this.status != TrakitSocketStatus.opened) throw new InvalidOperationException($"connection is {this.status}.");
 
-			_closer = new TrakitSocketMessage(message, string.Empty, reason);
+			_closer = _closer ?? new TrakitSocketMessage(message, string.Empty, reason);
 			_outgoing.TryAdd(_closer, -1, _sauce.Token);
 
 			return _disconnecting();
