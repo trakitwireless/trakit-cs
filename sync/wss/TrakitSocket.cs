@@ -11,15 +11,13 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
 using trakit.hmac;
-using trakit.objects;
 using trakit.tools;
-using static trakit.https.TrakitRestfulException;
 
 namespace trakit.wss {
 	/// <summary>
 	/// A wrapper for Trak-iT's <see cref="WebSocket"/> service, including service specific idiosyncrasies.
 	/// </summary>
-	public class TrakitSocket : IDisposable {
+	public sealed class TrakitSocket : Commander, IDisposable {
 		/// <summary>
 		/// Production <see cref="WebSocket"/> service URL.
 		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
@@ -34,7 +32,6 @@ namespace trakit.wss {
 		/// Both services access the same dataset, so be careful making changes as they will be reflected in production as well.
 		/// </remarks>
 		public const string URI_BETA = "wss://kraken.trakit.ca";
-
 		#region Statics
 		//sequential white space of all kinds
 		static Regex WHITESPACE = new Regex(@"[\r\n\s\t]+", RegexOptions.Compiled);
@@ -51,13 +48,13 @@ namespace trakit.wss {
 		#endregion Statics
 
 		/// <summary>
-		/// Used to correlate requests and responses.
-		/// </summary>
-		int _reqId;
-		/// <summary>
 		/// <see cref="Uri"/> of the Trak-iT WebSocket service.
 		/// </summary>
 		public Uri baseAddress { get; private set; }
+		/// <summary>
+		/// The underlying connection.
+		/// </summary>
+		public ClientWebSocket client { get; private set; }
 		/// <summary>
 		/// This <see cref="WebSocket"/> wrapper's current connection status.
 		/// </summary>
@@ -66,94 +63,54 @@ namespace trakit.wss {
 		/// </remarks>
 		public TrakitSocketStatus status { get; private set; } = TrakitSocketStatus.closed;
 
-		/// <summary>
-		/// The underlying connection.
-		/// </summary>
-		public ClientWebSocket client { get; private set; }
-		/// <summary>
-		/// Details of the <see cref="User"/> or <see cref="Machine"/> whose <see cref="Session"/> is connected to the <see cref="client"/>.
-		/// </summary>
-		public RespSelfDetails session { get; private set; }
-		/// <summary>
-		/// 
-		/// </summary>
-		public Serializer serializer { get; private set; } = new Serializer();
-
 		public TrakitSocket() : this(new Uri(URI_PROD)) { }
 		public TrakitSocket(Uri baseAddress) {
 			this.baseAddress = baseAddress;
 		}
 		public void Dispose() {
 			var wss = this.client;
-			_sauce?.Cancel();
 			this.client = null;
 			wss?.Abort();
 			wss?.Dispose();
+			wss = null;
 		}
-
-		#region Authorization
-		// saved API credentials when using a service account
-		Machine _machine;
-		// saved session identifier when using a user account
-		Guid _sessionId;
-		/// <summary>
-		/// Saves the authentication mechanism as a <see cref="Machine"/>.
-		/// </summary>
-		/// <param name="machine"></param>
-		public void setAuth(Machine machine) {
-			this.setAuth();
-			_machine = machine;
-		}
-		/// <summary>
-		/// Saves the authentication mechanism as a <see cref="Session.id"/>.
-		/// </summary>
-		/// <param name="sessionId"></param>
-		public void setAuth(Guid sessionId) {
-			this.setAuth();
-			_sessionId = sessionId;
-		}
-		/// <summary>
-		/// Unsets the authentication mechanism so that requests are sent without any.
-		/// </summary>
-		public void setAuth() {
-			_machine = default;
-			_sessionId = default;
-		}
-		#endregion Authorization
 
 		#region Connection
 		// an awaitable task which completes upon disconnection
 		Task _connecting() {
-			var sauce = new TaskCompletionSource<bool>();
+			var sauce = new TaskCompletionSource<TrakitSocketStatus>();
 			void handler(TrakitSocket sender) {
 				this.StatusChanged -= handler;
-				if (this.status == TrakitSocketStatus.opened) {
-					sauce.SetResult(true);
+				if (
+					this.status == TrakitSocketStatus.opened
+					&& sauce.TrySetResult(this.status)
+				) {
+					_sender = Task.Run(_sending, _sauce.Token);
 				} else {
 					sauce.SetCanceled();
 				}
-			};
+			}
 			this.StatusChanged += handler;
 			return sauce.Task;
 		}
 		// an awaitable task which completes upon disconnection
 		Task _disconnecting() {
-			var sauce = new TaskCompletionSource<bool>();
+			var sauce = new TaskCompletionSource<TrakitSocketStatus>();
 			void handler(TrakitSocket sender) {
-				switch (this.status) {
-					case TrakitSocketStatus.closing:
-						// do nothing, return instead of break so as to not unbind the handler
-						return;
-					case TrakitSocketStatus.closed:
-						sauce.SetResult(true);
-						break;
-					default:
-						sauce.SetCanceled();
-						break;
-				}
+				// do nothing and return (do not unbind the handler)
+				// this is a normal part of the disconnection routine
+				if (this.status == TrakitSocketStatus.closing) return;
+
 				this.StatusChanged -= handler;
-			};
+				if (
+					this.status != TrakitSocketStatus.closed
+					|| !sauce.TrySetResult(this.status)
+				) {
+					sauce.SetCanceled();
+				}
+			}
 			this.StatusChanged += handler;
+			if (this.status == TrakitSocketStatus.closed) sauce.TrySetResult(this.status);
 			return sauce.Task;
 		}
 
@@ -167,10 +124,11 @@ namespace trakit.wss {
 		public async Task connect(IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
 			if (this.status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.status}.");
 
+			_waitingForConnResp = true;
 			_shutter = null;
-			this.client = new ClientWebSocket();
 			_sauce = new CancellationTokenSource();
 			_outgoing = new BlockingCollection<TrakitSocketMessage>();
+			this.client = new ClientWebSocket();
 			if (headers?.Count() > 0) {
 				foreach (var pair in headers) {
 					this.client.Options.SetRequestHeader(pair.Key, pair.Value);
@@ -203,9 +161,8 @@ namespace trakit.wss {
 				_onStatus(TrakitSocketStatus.opening);
 				await this.client.ConnectAsync(new Uri(uri), source.Token);
 				var conn = _connecting();
-				_receiver = Task.Run(_receiving, source.Token);
-				_sender = Task.Run(_sending, source.Token);
-				await conn;
+				_receiver = Task.Run(_receiving, _sauce.Token);
+				await conn.ConfigureAwait(false);
 			} catch {
 				source.Cancel();
 				source.Dispose();
@@ -232,7 +189,7 @@ namespace trakit.wss {
 		) {
 			if (this.status != TrakitSocketStatus.opened) throw new InvalidOperationException($"connection is {this.status}.");
 
-			_closer = new TrakitSocketMessage(message, string.Empty, reason);
+			_closer = _closer ?? new TrakitSocketMessage(message, string.Empty, reason);
 			_outgoing.TryAdd(_closer, -1, _sauce.Token);
 
 			return _disconnecting();
@@ -249,7 +206,7 @@ namespace trakit.wss {
 		void _shutdown(string closeMessage, WebSocketCloseStatus closeReason) {
 			lock (_shutlock) {
 				// it may be possible that this assignment happens twice, which is why the lock object is used.
-				_shutter = _shutter ?? _shutting(closeMessage, closeReason);
+				_shutter = _shutter ?? Task.Run(async () => await _shutting(closeMessage, closeReason).ConfigureAwait(false));
 			}
 		}
 		// the task handling the disconnect
@@ -268,9 +225,8 @@ namespace trakit.wss {
 			this.client = null;
 			client.Abort();
 			client.Dispose();
-			_receiver =
-			_sender = null;
-			_first = true;
+			_sender =
+			_receiver = null;
 
 			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
 		}
@@ -284,14 +240,14 @@ namespace trakit.wss {
 		// before we receive the connectionResponse message, the socket is in an unstable state
 		// and can end the session if a command is sent
 		// so we only mark this wrapper as "open" when the underlying connection is open, and we've received this message.
-		bool _first = true;
+		bool _waitingForConnResp;
 		// handles incoming messages and server initiated disconnections.
 		async Task _receiving() {
 			var ct = _sauce.Token;
 			string closeMessage = BYEBYE;
 			WebSocketCloseStatus closeReason = WebSocketCloseStatus.NormalClosure;
-			while (!ct.IsCancellationRequested && this.client?.State == WebSocketState.Open) {
-				try {
+			try {
+				while (!ct.IsCancellationRequested && this.client?.State == WebSocketState.Open) {
 					byte[] buffer = new byte[BUFFER];
 					List<byte> message = new List<byte>();
 					WebSocketReceiveResult received;
@@ -303,17 +259,18 @@ namespace trakit.wss {
 					switch (received.MessageType) {
 						case WebSocketMessageType.Text:
 							var msg = new TrakitSocketMessage(message);
-							if (_first && msg.name == "connectionResponse") {
-								_first = false;
-								this.session = this.serializer.deserialize<RespSelfDetails>(msg.body);
+							if (_waitingForConnResp && msg.name == "connectionResponse") {
+								_waitingForConnResp = false;
+								this.self = this.serializer.deserialize<RespSelfDetails>(msg.body);
 								_onStatus(TrakitSocketStatus.opened);
+							} else {
+								this.MessageReceived?.Invoke(this, msg);
 							}
-							this.MessageReceived?.Invoke(this, msg);
 							break;
 						case WebSocketMessageType.Close:
 							_onStatus(TrakitSocketStatus.closing);
 							await this.client.CloseOutputAsync(
-								WebSocketCloseStatus.NormalClosure,
+								received.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
 								closeMessage,
 								ct
 							);
@@ -324,22 +281,22 @@ namespace trakit.wss {
 								WebSocketCloseStatus.InvalidMessageType
 							);
 					}
-				} catch (OperationCanceledException) {
-					// CancellationToken cancelled
-					_onStatus(TrakitSocketStatus.closing);
-				} catch (Exception ex) {
-					_onStatus(TrakitSocketStatus.closing);
-					var reason = ex is TrakitSocketException tse
-							? tse.reason
-							: WebSocketCloseStatus.ProtocolError;
-					closeMessage = ex.Message;
-					closeReason = reason;
-					await this.client.CloseOutputAsync(
-						reason,
-						closeMessage,
-						ct
-					);
 				}
+			} catch (OperationCanceledException) {
+				// CancellationToken cancelled
+				_onStatus(TrakitSocketStatus.closing);
+			} catch (Exception ex) {
+				_onStatus(TrakitSocketStatus.closing);
+				var reason = ex is TrakitSocketException tse
+						? tse.reason
+						: WebSocketCloseStatus.ProtocolError;
+				closeMessage = ex.Message;
+				closeReason = reason;
+				await this.client.CloseOutputAsync(
+					reason,
+					closeMessage,
+					ct
+				);
 			}
 			_shutdown(closeMessage, closeReason);
 		}
@@ -381,6 +338,8 @@ namespace trakit.wss {
 					}
 					this.MessageSent?.Invoke(this, message);
 				}
+			} catch (OperationCanceledException) {
+				// shutting down
 			} catch (WebSocketException ex) {
 				// socket disconnect
 				closeMessage = ex.Message;
@@ -418,7 +377,6 @@ namespace trakit.wss {
 			) ?? Task.CompletedTask);
 		}
 		#endregion Messages - Sending
-
 		#region Commands
 		// command name reply suffix
 		const string RESPONSE_SUFFIX = "Response";
@@ -475,126 +433,46 @@ namespace trakit.wss {
 		/// <param name="parameters"></param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
-		public Task<TJson> command<TJson>(string name, JObject parameters) where TJson : JObject {
+		public Task<JObject> command(string name, JObject parameters) {
 			if (this.status != TrakitSocketStatus.opened) throw new InvalidOperationException($"connection is {this.status}.");
 
 			// let's track this request.
 			parameters["reqId"] = ++_reqId;
 			var outbound = new TrakitSocketMessage(name, this.serializer.serialize(parameters));
 
-			var sauce = new TaskCompletionSource<TJson>();
+			var sauce = new TaskCompletionSource<JObject>();
 			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
 				if (received.name == outbound.name + RESPONSE_SUFFIX) {
-					var response = this.serializer.deserialize<TJson>(received.body);
-					if (response["reqId"] == parameters["reqId"]) {
-						this.StatusChanged -= handleDis;
+					var response = this.serializer.deserialize<JObject>(received.body);
+					if (
+						int.TryParse(response?["reqId"]?.ToString(), out int reqId)
+						&& reqId == (int)parameters["reqId"]
+					) {
 						this.MessageReceived -= handleMsg;
-						sauce.SetResult(response);
+						this.StatusChanged -= handleDis;
+						if (!sauce.TrySetResult(response)) {
+							sauce.SetCanceled();
+						}
 					}
 				}
 			}
 			void handleDis(TrakitSocket sender) {
-				switch (this.status) {
-					case TrakitSocketStatus.closing:
-					case TrakitSocketStatus.closed:
-						this.MessageReceived -= handleMsg;
-						this.StatusChanged -= handleDis;
-						sauce.SetCanceled();
-						break;
-				}
-			};
-			this.StatusChanged += handleDis;
+				this.MessageReceived -= handleMsg;
+				this.StatusChanged -= handleDis;
+				sauce.SetCanceled();
+			}
 			this.MessageReceived += handleMsg;
+			this.StatusChanged += handleDis;
 
 			// add to outgoing queue
 			var ct = _sauce.Token;
 			return _outgoing.TryAdd(outbound, -1, ct)
 				? sauce.Task
-				: Task.FromCanceled<TJson>(ct);
+				: Task.FromCanceled<JObject>(ct);
 		}
-		/// <summary>
-		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
-		/// </summary>
-		/// <typeparam name="TResponse"></typeparam>
-		/// <param name="request"></param>
-		/// <returns></returns>
-		/// <exception cref="InvalidOperationException"></exception>
-		public async Task<TResponse> command<TResponse>(Request request) where TResponse : Response
-			=> this.serializer.convertFrom<TResponse>(
-				await this.command<JObject>(
-					_getCommandName(request),
-					this.serializer.convertTo<JObject>(request)
-				)
-			);
 		#endregion Commands
-		#region Commands - Self
-		/// <summary>
-		/// Subscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.
-		/// </summary>
-		/// <param name="company"></param>
-		/// <param name="subscriptions"></param>
-		/// <returns></returns>
-		public Task<RespSubscription> subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.command<RespSubscription>(new ReqSubscriptionMerge() {
-				company = new ParamId() { id = company },
-				subscriptionTypes = subscriptions.ToArray()
-			});
-		/// <summary>
-		/// Unsubscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.
-		/// </summary>
-		/// <param name="company"></param>
-		/// <param name="subscriptions"></param>
-		/// <returns></returns>
-		public Task<RespSubscription> unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.command<RespSubscription>(new ReqSubscriptionRemove() {
-				company = new ParamId() { id = company },
-				subscriptionTypes = subscriptions.ToArray()
-			});
-		/// <summary>
-		/// Gets the list of current subscriptions for the <see cref="client"/>.
-		/// </summary>
-		/// <returns></returns>
-		public Task<RespSubscriptionList> subscriptionList()
-			=> this.command<RespSubscriptionList>(new ReqSubscriptionList());
-
-		/// <summary>
-		/// Sends a login command, and if successful, saves the <see cref="RespSelfDetails.ghostId"/> as the authentication mechanism for all further requests.
-		/// </summary>
-		/// <param name="username">Your email address.</param>
-		/// <param name="password">Your password.</param>
-		/// <param name="userAgent">Optional string to identify this software.</param>
-		/// <returns>The <see cref="RespSelfDetails"/>, which contains a <see cref="SelfUser"/> when successful.</returns>
-		public async Task<RespSelfDetails> login(string username, string password, string userAgent = default) {
-			var body = new ReqSelfLogin() {
-				username = username,
-				password = password,
-			};
-			if (userAgent != default) body.userAgent = userAgent;
-			this.session = await this.command<RespSelfDetails>(body);
-			if (this.session.errorCode == ErrorCode.success && Guid.TryParse(this.session.ghostId, out Guid sessionId)) {
-				this.setAuth(sessionId);
-			}
-			return this.session;
-		}
-		/// <summary>
-		/// Sends a logout command, and if successful, removes the current session using <see cref="setAuth()"/>.
-		/// </summary>
-		/// <returns></returns>
-		public async Task<RespSelfLogout> logout() {
-			var response = await this.command<RespSelfLogout>(new ReqSelfLogout());
-			switch (response.errorCode) {
-				case ErrorCode.success:
-				case ErrorCode.sessionExpired:
-				case ErrorCode.sessionNotFound:
-					this.setAuth();
-					this.session = default;
-					break;
-			}
-			return response;
-		}
-		#endregion Commands - Self
-
 		#region Events
+
 		/// <summary>
 		/// Delegate for connection events.
 		/// </summary>
@@ -661,5 +539,50 @@ namespace trakit.wss {
 		/// </summary>
 		public event MessageHandler MessageReceived;
 		#endregion Events
+		#region Commands - Subscription
+		/// <summary>
+		/// Subscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.
+		/// </summary>
+		/// <param name="company"></param>
+		/// <param name="subscriptions"></param>
+		/// <returns></returns>
+		public Task<RespSubscription> subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
+			=> this.command<RespSubscription>(new ReqSubscriptionMerge() {
+				company = new ParamId() { id = company },
+				subscriptionTypes = subscriptions.ToArray()
+			});
+		/// <summary>
+		/// Unsubscribes the <see cref="client"/> to receive notifications for merge/delete changes to objects.
+		/// </summary>
+		/// <param name="company"></param>
+		/// <param name="subscriptions"></param>
+		/// <returns></returns>
+		public Task<RespSubscription> unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
+			=> this.command<RespSubscription>(new ReqSubscriptionRemove() {
+				company = new ParamId() { id = company },
+				subscriptionTypes = subscriptions.ToArray()
+			});
+		/// <summary>
+		/// Gets the list of current subscriptions for the <see cref="client"/>.
+		/// </summary>
+		/// <returns></returns>
+		public Task<RespSubscriptionList> subscriptionList()
+			=> this.command<RespSubscriptionList>(new ReqSubscriptionList());
+		#endregion Commands - Subscription
+
+		/// <summary>
+		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
+		/// </summary>
+		/// <typeparam name="TResponse"></typeparam>
+		/// <param name="request"></param>
+		/// <returns></returns>
+		/// <exception cref="InvalidOperationException"></exception>
+		public override async Task<TResponse> command<TResponse>(Request request)
+			=> this.serializer.convertFrom<TResponse>(
+				await this.command(
+					_getCommandName(request),
+					this.serializer.convertTo<JObject>(request)
+				)
+			);
 	}
 }
