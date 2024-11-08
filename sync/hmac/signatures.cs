@@ -103,7 +103,7 @@ namespace trakit.hmac {
 			apiKey,
 			date.ToString("yyyyMMddHHmmss"),
 			method.ToString(),
-			absoluteUri.getSanitizedUri() ,
+			absoluteUri.getSanitizedUri(),
 			requestLength.ToString()
 		}));
 

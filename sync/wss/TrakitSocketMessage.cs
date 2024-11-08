@@ -37,7 +37,7 @@ namespace trakit.wss {
 		/// <summary>
 		/// When specified, will close the socket after sending the message with this reason.
 		/// </summary>
-		public WebSocketCloseStatus reason;
+		public readonly WebSocketCloseStatus reason;
 
 		/// <summary>
 		/// Creates an incoming message from the received bytes.
