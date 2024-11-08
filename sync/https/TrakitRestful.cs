@@ -7,14 +7,13 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
 using trakit.hmac;
-using trakit.objects;
 using trakit.tools;
 
 namespace trakit.https {
 	/// <summary>
 	/// A helper for accessing Trak-iT's RESTful service.
 	/// </summary>
-	public class TrakitRestful : IDisposable {
+	public sealed class TrakitRestful : Commander, IDisposable {
 		/// <summary>
 		/// Production RESTful service URL.
 		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
@@ -31,10 +30,6 @@ namespace trakit.https {
 		public const string URI_BETA = "https://mindflayer.trakit.ca";
 
 		/// <summary>
-		/// Used to correlate requests and responses.
-		/// </summary>
-		int _reqId;
-		/// <summary>
 		/// <see cref="Uri"/> of the Trak-iT RESTful service.
 		/// </summary>
 		public Uri baseAddress { get; private set; }
@@ -42,14 +37,6 @@ namespace trakit.https {
 		/// The underlying client making HTTPS requests.
 		/// </summary>
 		public HttpClient client { get; private set; } = new HttpClient();
-		/// <summary>
-		/// Details of the <see cref="User"/> or <see cref="Machine"/> whose <see cref="Session"/> is connected to the <see cref="client"/>.
-		/// </summary>
-		public RespSelfDetails session { get; private set; }
-		/// <summary>
-		/// 
-		/// </summary>
-		public Serializer serializer { get; private set; } = new Serializer();
 
 		public TrakitRestful() : this(new Uri(URI_PROD)) { }
 		public TrakitRestful(Uri baseAddress) {
@@ -61,36 +48,6 @@ namespace trakit.https {
 			http?.CancelPendingRequests();
 			http?.Dispose();
 		}
-
-		#region Authorization
-		// saved API credentials when using a service account
-		Machine _machine;
-		// saved session identifier when using a user account
-		Guid _sessionId;
-		/// <summary>
-		/// Saves the authentication mechanism as a <see cref="Machine"/>.
-		/// </summary>
-		/// <param name="machine"></param>
-		public void setAuth(Machine machine) {
-			this.setAuth();
-			_machine = machine;
-		}
-		/// <summary>
-		/// Saves the authentication mechanism as a <see cref="Session.id"/>.
-		/// </summary>
-		/// <param name="sessionId"></param>
-		public void setAuth(Guid sessionId) {
-			this.setAuth();
-			_sessionId = sessionId;
-		}
-		/// <summary>
-		/// Unsets the authentication mechanism so that requests are sent without any.
-		/// </summary>
-		public void setAuth() {
-			_machine = default;
-			_sessionId = default;
-		}
-		#endregion Authorization
 
 		#region Commands
 		// used to split object names into paths
@@ -191,7 +148,7 @@ namespace trakit.https {
 		/// <param name="path">The relative path from the <see cref="baseAddress"/> for this request.</param>
 		/// <param name="parms">Optional request parameters.</param>
 		/// <returns>The JSON which appears in the body of the response.</returns>
-		public async Task<TJson> command<TJson>(HttpMethod method, string path, JObject parms = default) where TJson : JObject {
+		public async Task<JObject> command(HttpMethod method, string path, JObject parms = default) {
 			HttpRequestMessage request = null;
 			HttpResponseMessage response = null;
 			string route = null;
@@ -201,7 +158,7 @@ namespace trakit.https {
 				request = _command(method, path, parms, out route, out body);
 				response = await this.client.SendAsync(request);
 				content = await response.Content.ReadAsStringAsync();
-				return this.serializer.deserialize<TJson>(content);
+				return this.serializer.deserialize<JObject>(content);
 			} catch (Exception ex) {
 				throw new TrakitRestfulException(
 					ex.Message,
@@ -213,59 +170,23 @@ namespace trakit.https {
 				);
 			}
 		}
+		#endregion Commands
+	
 		/// <summary>
 		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
 		/// </summary>
 		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
 		/// <param name="request">Request message details.</param>
 		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public async Task<TResp> command<TResp>(Request request) where TResp : Response {
+		public override async Task<TResp> command<TResp>(Request request) {
 			_commandHttp(request, out HttpMethod method, out string route);
 			return this.serializer.convertFrom<TResp>(
-				await this.command<JObject>(
+				await this.command(
 					method,
 					route,
 					this.serializer.convertTo<JObject>(request)
 				)
 			);
 		}
-		#endregion Commands
-		#region Commands - Self
-		/// <summary>
-		/// Sends a login command, and if successful, saves the <see cref="RespSelfDetails.ghostId"/> as the authentication mechanism for all further requests.
-		/// </summary>
-		/// <param name="username">Your email address.</param>
-		/// <param name="password">Your password.</param>
-		/// <param name="userAgent">Optional string to identify this software.</param>
-		/// <returns>The <see cref="RespSelfDetails"/>, which contains a <see cref="SelfUser"/> when successful.</returns>
-		public async Task<RespSelfDetails> login(string username, string password, string userAgent = default) {
-			var body = new ReqSelfLogin() {
-				username = username,
-				password = password,
-			};
-			if (userAgent != default) body.userAgent = userAgent;
-			this.session = await this.command<RespSelfDetails>(body);
-			if (this.session.errorCode == ErrorCode.success && Guid.TryParse(this.session.ghostId, out Guid sessionId)) {
-				this.setAuth(sessionId);
-			}
-			return this.session;
-		}
-		/// <summary>
-		/// Sends a logout command, and if successful, removes the current session using <see cref="setAuth()"/>.
-		/// </summary>
-		/// <returns></returns>
-		public async Task<RespSelfLogout> logout() {
-			var response = await this.command<RespSelfLogout>(new ReqSelfLogout());
-			switch (response.errorCode) {
-				case ErrorCode.success:
-				case ErrorCode.sessionExpired:
-				case ErrorCode.sessionNotFound:
-					this.setAuth();
-					this.session = default;
-					break;
-			}
-			return response;
-		}
-		#endregion Commands - Self
 	}
 }
