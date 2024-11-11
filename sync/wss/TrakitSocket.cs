@@ -145,8 +145,9 @@ namespace trakit.wss {
 		/// </summary>
 		public event MessageHandler MessageReceived;
 		#endregion Events
-
-		#region Connection
+		#region Connection/Disconnection
+		// token source for managing connecting, and incoming/outgoing messaging
+		CancellationTokenSource _sauce;
 		// an awaitable task which completes upon disconnection
 		Task _connecting() {
 			var sauce = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -161,6 +162,38 @@ namespace trakit.wss {
 			}
 			this.StatusChanged += handler;
 			return sauce.Task;
+		}
+		// generic disconnect message
+		const string BYEBYE = "Goodbye!";
+		// flag for setting only one disconnect handler
+		object _shutlock = new { };
+		// the task handling the disconnect
+		Task _shutter;
+		// this is called when either the client or server (not the user) initiates a disconnection
+		void _shutdown(string closeMessage, WebSocketCloseStatus closeReason) {
+			lock (_shutlock) {
+				// it may be possible that this assignment happens twice, which is why the lock object is used.
+				_shutter = _shutter ?? Task.Run(async () => await _shutting(closeMessage, closeReason).ConfigureAwait(false));
+			}
+		}
+		// handles the disconnect, disposes of resources, and awaits tasks doing send/receive
+		async Task _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
+			_sauce.Cancel();
+			_outgoing.CompleteAdding();
+			try { await _sender; } catch { _sender = null; } finally { _sender?.Dispose(); }
+			try { await _receiver; } catch { _receiver = null; } finally { _receiver?.Dispose(); }
+			var wss = this.client;
+			this.client = null;
+			_outgoing.Dispose();
+			_outgoing = null;
+			_sauce.Dispose();
+			_sauce = null;
+			wss.Abort();
+			wss.Dispose();
+			_sender =
+			_receiver = null;
+
+			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
 		}
 		// an awaitable task which completes upon disconnection
 		Task _disconnecting() {
@@ -262,43 +295,7 @@ namespace trakit.wss {
 
 			return _disconnecting();
 		}
-		#endregion Connection
-		#region Disconnection
-		// generic disconnect message
-		const string BYEBYE = "Goodbye!";
-		// token source for managing connecting, and incoming/outgoing messaging
-		CancellationTokenSource _sauce;
-		// flag for setting only one disconnect handler
-		object _shutlock = new { };
-		// this is called when either the client or server (not the user) initiates a disconnection
-		void _shutdown(string closeMessage, WebSocketCloseStatus closeReason) {
-			lock (_shutlock) {
-				// it may be possible that this assignment happens twice, which is why the lock object is used.
-				_shutter = _shutter ?? Task.Run(async () => await _shutting(closeMessage, closeReason).ConfigureAwait(false));
-			}
-		}
-		// the task handling the disconnect
-		Task _shutter;
-		// handles the disconnect, disposes of resources, and awaits tasks doing send/receive
-		async Task _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
-			_sauce.Cancel();
-			_outgoing.CompleteAdding();
-			try { await _sender; } catch { _sender = null; } finally { _sender?.Dispose(); }
-			try { await _receiver; } catch { _receiver = null; } finally { _receiver?.Dispose(); }
-			_outgoing.Dispose();
-			_outgoing = null;
-			_sauce.Dispose();
-			_sauce = null;
-			var client = this.client;
-			this.client = null;
-			client.Abort();
-			client.Dispose();
-			_sender =
-			_receiver = null;
-
-			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
-		}
-		#endregion Disconnection
+		#endregion Connection/Disconnection
 
 		#region Messages - Receiving
 		// 1mb buffer for receiving; way more than enough
@@ -396,7 +393,7 @@ namespace trakit.wss {
 						message = _closer;
 						closeMessage = message.name;
 						closeReason = message.reason;
-						await _sendingClose(
+						await _close(
 							closeReason,
 							closeMessage,
 							ct
@@ -415,7 +412,7 @@ namespace trakit.wss {
 					_onStatus(TrakitSocketStatus.closing);
 				} else {
 					closeReason = WebSocketCloseStatus.ProtocolError;
-					await _sendingClose(
+					await _close(
 						closeReason,
 						ex.Message,
 						ct
@@ -426,7 +423,7 @@ namespace trakit.wss {
 				closeReason = ex is TrakitSocketException tsx
 						? tsx.reason
 						: WebSocketCloseStatus.ProtocolError;
-				await _sendingClose(
+				await _close(
 					closeReason,
 					closeMessage,
 					ct
@@ -435,9 +432,9 @@ namespace trakit.wss {
 			_shutdown(closeMessage, closeReason);
 		}
 		// sends the client requested close message with the reason and goodbye message
-		async Task _sendingClose(WebSocketCloseStatus reason, string message, CancellationToken ct) {
+		Task _close(WebSocketCloseStatus reason, string message, CancellationToken ct) {
 			_onStatus(TrakitSocketStatus.closing);
-			await (this.client?.CloseOutputAsync(
+			return (this.client?.CloseOutputAsync(
 				reason,
 				TrakitSocket.errorToReason(message) ?? reason.ToString(),
 				ct

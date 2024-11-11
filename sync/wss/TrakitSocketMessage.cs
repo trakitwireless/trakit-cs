@@ -43,7 +43,7 @@ namespace trakit.wss {
 		/// Creates an incoming message from the received bytes.
 		/// </summary>
 		/// <param name="received"></param>
-		public TrakitSocketMessage(IEnumerable<byte> received) {
+		internal TrakitSocketMessage(IEnumerable<byte> received) {
 			this.incoming = true;
 			this.content = received?.ToArray() ?? new byte[0];
 
