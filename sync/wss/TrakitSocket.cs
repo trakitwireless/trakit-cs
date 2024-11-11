@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web;
 using Newtonsoft.Json.Linq;
 using trakit.commands;
 using trakit.hmac;
@@ -219,11 +220,16 @@ namespace trakit.wss {
 		/// <summary>
 		/// Initiates a new <see cref="WebSocket"/> connection.
 		/// </summary>
-		/// <param name="headers"></param>
 		/// <param name="ct"></param>
+		/// <param name="query"></param>
+		/// <param name="headers"></param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
-		public async Task connect(IEnumerable<KeyValuePair<string, string>> headers = null, CancellationToken? ct = null) {
+		public async Task connect(
+			CancellationToken? ct = null,
+			IDictionary<string, string> query = null,
+			IDictionary<string, string> headers = null
+		) {
 			if (this.status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.status}.");
 
 			_waitingForConnResp = true;
@@ -232,34 +238,44 @@ namespace trakit.wss {
 			_sauce = new CancellationTokenSource();
 			_outgoing = new BlockingCollection<TrakitSocketMessage>();
 			this.client = new ClientWebSocket();
+
+			var source = ct.HasValue
+					? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value)
+					: _sauce;
+			var uri = this.baseAddress.AbsoluteUri.TrimEnd('/') + "/";
+			if (query?.Count() > 0) {
+				foreach (var pair in query) {
+					uri += $"{(uri.Contains("?") ? "&" : "?")}{pair.Key}={HttpUtility.UrlEncode(pair.Value)}";
+				}
+			}
 			if (headers?.Count() > 0) {
 				foreach (var pair in headers) {
 					this.client.Options.SetRequestHeader(pair.Key, pair.Value);
 				}
 			}
-			var uri = $"{this.baseAddress.AbsoluteUri.TrimEnd('/')}/";
 			if (_machine != default) {
-				this.client.Options.SetRequestHeader(
-					"Authorization",
-					"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
-						_machine.key
-						+ ":"
-						+ signatures.createHmacSignedInput(
-							_machine.key,
-							_machine.secret,
-							DateTime.UtcNow,
-							HttpMethod.Get,
-							new Uri(uri),
-							0
-						)
-					))
-				);
+				if (_machine.secret?.Length > 0) {
+					this.client.Options.SetRequestHeader(
+						"Authorization",
+						"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
+							_machine.key
+							+ ":"
+							+ signatures.createHmacSignedInput(
+								_machine.key,
+								_machine.secret,
+								DateTime.UtcNow,
+								HttpMethod.Get,
+								new Uri(uri),
+								0
+							)
+						))
+					);
+				} else {
+					uri += $"{(uri.Contains("?") ? "&" : "?")}shadowKey={HttpUtility.UrlEncode(_machine.key)}";
+				}
 			} else {
 				uri += $"{(uri.Contains("?") ? "&" : "?")}ghostId={_sessionId}";
 			}
-			var source = ct.HasValue
-					? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value)
-					: _sauce;
 			try {
 				_onStatus(TrakitSocketStatus.opening);
 				await this.client.ConnectAsync(new Uri(uri), source.Token);
