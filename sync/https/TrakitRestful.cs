@@ -30,21 +30,17 @@ namespace Trakit.Https {
 		public const string URI_BETA = "https://mindflayer.trakit.ca";
 
 		/// <summary>
-		/// <see cref="Uri"/> of the Trak-iT RESTful service.
-		/// </summary>
-		public Uri baseAddress { get; private set; }
-		/// <summary>
 		/// The underlying client making HTTPS requests.
 		/// </summary>
-		public HttpClient client { get; private set; } = new HttpClient();
+		public HttpClient Client { get; private set; } = new HttpClient();
 
 		public TrakitRestful() : this(new Uri(URI_PROD)) { }
 		public TrakitRestful(Uri baseAddress) {
-			this.baseAddress = baseAddress;
+			this.BaseAddress = baseAddress;
 		}
 		public void Dispose() {
-			var http = this.client;
-			this.client = null;
+			var http = this.Client;
+			this.Client = null;
 			http?.CancelPendingRequests();
 			http?.Dispose();
 		}
@@ -56,7 +52,7 @@ namespace Trakit.Https {
 		void _commandHttp<TRequest>(TRequest request, out HttpMethod method, out string route) where TRequest : Request {
 			method = default;
 			route = default;
-			var matches = request.getNameParts();
+			var matches = request.GetNameParts();
 			if (matches.Length > 1) {
 				switch (matches[0]) {
 					case "Self":
@@ -67,7 +63,7 @@ namespace Trakit.Https {
 						throw new NotImplementedException($"{matches[0]} only supported by TrakitSocket");
 				}
 
-				var objNames = SPLITTER.Split(matches[0]).Select(s => Text.plural(s)).ToArray();
+				var objNames = SPLITTER.Split(matches[0]).Select(s => Text.Plural(s)).ToArray();
 				route = string.Join("/", objNames);
 				switch (matches[1]) {
 					case "Get":
@@ -116,12 +112,12 @@ namespace Trakit.Https {
 		HttpRequestMessage _command(HttpMethod method, string path, JObject body, out string route, out string content) {
 			_reqId++; // always
 			var request = new HttpRequestMessage(method, path);
-			path = $"{this.baseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
+			path = $"{this.BaseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
 			if (body != default) {
 				// request has a body
 				body["reqId"] = _reqId;
 				request.Content = new StringContent(
-					content = this.serializer.serialize(body),
+					content = this.Serializer.Serialize(body),
 					Encoding.UTF8,
 					"text/json"
 				);
@@ -133,7 +129,7 @@ namespace Trakit.Https {
 			if ((_machine?.secret?.Length ?? 0) != 0) {
 				// use machine auth
 				request.RequestUri = new Uri(path);
-				Signatures.addHmacHeader(request, _machine);
+				Signatures.AddHmacHeader(request, _machine);
 			} else if (_sessionId != default) {
 				// user session in query-string
 				request.RequestUri = new Uri(path + $"{(!path.Contains("?") ? "?" : "&")}ghostId={_sessionId}");
@@ -145,10 +141,10 @@ namespace Trakit.Https {
 		/// Sends a raw JSON request to the Trak-iT RESTful API and returns a task whose result is also JSON.
 		/// </summary>
 		/// <param name="method"><see cref="HttpMethod"/> for this request.</param>
-		/// <param name="path">The relative path from the <see cref="baseAddress"/> for this request.</param>
+		/// <param name="path">The relative path from the <see cref="BaseAddress"/> for this request.</param>
 		/// <param name="parms">Optional request parameters.</param>
 		/// <returns>The JSON which appears in the body of the response.</returns>
-		public async Task<JObject> command(HttpMethod method, string path, JObject parms = default) {
+		public async Task<JObject> Command(HttpMethod method, string path, JObject parms = default) {
 			HttpRequestMessage request = null;
 			HttpResponseMessage response = null;
 			string route = null;
@@ -156,9 +152,9 @@ namespace Trakit.Https {
 			string content = null;
 			try {
 				request = _command(method, path, parms, out route, out body);
-				response = await this.client.SendAsync(request);
+				response = await this.Client.SendAsync(request);
 				content = await response.Content.ReadAsStringAsync();
-				return this.serializer.deserialize<JObject>(content);
+				return this.Serializer.Deserialize<JObject>(content);
 			} catch (Exception ex) {
 				throw new TrakitRestfulException(
 					ex.Message,
@@ -178,13 +174,13 @@ namespace Trakit.Https {
 		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
 		/// <param name="request">Request message details.</param>
 		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public override async Task<TResp> command<TResp>(Request request) {
+		public override async Task<TResp> Command<TResp>(Request request) {
 			_commandHttp(request, out HttpMethod method, out string route);
-			return this.serializer.convertFrom<TResp>(
-				await this.command(
+			return this.Serializer.ConvertFrom<TResp>(
+				await this.Command(
 					method,
 					route,
-					this.serializer.convertTo<JObject>(request)
+					this.Serializer.ConvertTo<JObject>(request)
 				)
 			);
 		}

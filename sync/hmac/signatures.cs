@@ -30,8 +30,8 @@ namespace Trakit.Hmac {
 		/// <param name="secretBase64"></param>
 		/// <param name="utf8Input"></param>
 		/// <returns></returns>
-		public static string hmacSignInput(string secretBase64, string utf8Input)
-			=> Signatures.hmacSignInput(
+		public static string HmacSignInput(string secretBase64, string utf8Input)
+			=> Signatures.HmacSignInput(
 				Convert.FromBase64String(secretBase64),
 				Encoding.UTF8.GetBytes(utf8Input)
 			);
@@ -41,8 +41,8 @@ namespace Trakit.Hmac {
 		/// <param name="secretBase64"></param>
 		/// <param name="utf8Input"></param>
 		/// <returns></returns>
-		public static string hmacSignInput(byte[] secret, string utf8Input)
-			=> Signatures.hmacSignInput(
+		public static string HmacSignInput(byte[] secret, string utf8Input)
+			=> Signatures.HmacSignInput(
 				secret,
 				Encoding.UTF8.GetBytes(utf8Input)
 			);
@@ -52,7 +52,7 @@ namespace Trakit.Hmac {
 		/// <param name="secret"></param>
 		/// <param name="input"></param>
 		/// <returns></returns>
-		public static string hmacSignInput(byte[] secret, byte[] input) {
+		public static string HmacSignInput(byte[] secret, byte[] input) {
 			using (var hmac = new HMACSHA256(secret)) {
 				return Convert.ToBase64String(hmac.ComputeHash(input));
 			}
@@ -74,7 +74,7 @@ namespace Trakit.Hmac {
 			HttpMethod method,
 			Uri absoluteUri,
 			long requestLength
-		) => Signatures.createHmacSignedInput(
+		) => Signatures.CreateHmacSignedInput(
 			apiKey,
 			Convert.FromBase64String(secretBase64),
 			date,
@@ -92,18 +92,18 @@ namespace Trakit.Hmac {
 		/// <param name="absoluteUri"></param>
 		/// <param name="requestLength"></param>
 		/// <returns></returns>
-		public static string createHmacSignedInput(
+		public static string CreateHmacSignedInput(
 			string apiKey,
 			byte[] apiSecret,
 			DateTime date,
 			HttpMethod method,
 			Uri absoluteUri,
 			long requestLength
-		) => Signatures.hmacSignInput(apiSecret, string.Join("\n", new[] {
+		) => Signatures.HmacSignInput(apiSecret, string.Join("\n", new[] {
 			apiKey,
 			date.ToString("yyyyMMddHHmmss"),
 			method.ToString(),
-			absoluteUri.getSanitizedUri(),
+			absoluteUri.GetSanitizedUri(),
 			requestLength.ToString()
 		}));
 
@@ -112,7 +112,7 @@ namespace Trakit.Hmac {
 		/// </summary>
 		/// <param name="uri"></param>
 		/// <returns></returns>
-		public static string getSanitizedUri(this Uri uri) {
+		public static string GetSanitizedUri(this Uri uri) {
 			string sanitized = uri.AbsoluteUri.Substring(0, uri.AbsoluteUri.Length - uri.Query.Length - uri.Fragment.Length);
 			if (!string.IsNullOrEmpty(uri.Query)) {
 				var parts = uri.Query.Substring(1)
@@ -138,8 +138,8 @@ namespace Trakit.Hmac {
 		/// <param name="request"></param>
 		/// <param name="machine"></param>
 		/// <returns></returns>
-		public static AuthenticationHeaderValue addHmacHeader(HttpRequestMessage request, Machine machine)
-			=> request.Headers.Authorization = Signatures.createHmacHeader(
+		public static AuthenticationHeaderValue AddHmacHeader(HttpRequestMessage request, Machine machine)
+			=> request.Headers.Authorization = Signatures.CreateHmacHeader(
 				machine.key,
 				machine.secret,
 				(request.Headers.Date ?? DateTimeOffset.UtcNow).UtcDateTime,
@@ -157,7 +157,7 @@ namespace Trakit.Hmac {
 		/// <param name="absoluteUri"></param>
 		/// <param name="requestLength"></param>
 		/// <returns></returns>
-		public static AuthenticationHeaderValue createHmacHeader(
+		public static AuthenticationHeaderValue CreateHmacHeader(
 			string apiKey,
 			string secretBase64,
 			DateTime date,
