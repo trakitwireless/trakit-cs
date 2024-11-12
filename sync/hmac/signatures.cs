@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
-using trakit.objects;
+using Trakit.Objects;
 
 namespace trakit.hmac {
 	/// <summary>

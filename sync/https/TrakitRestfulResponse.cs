@@ -1,5 +1,5 @@
 ﻿using System.Net.Http;
-using trakit.commands;
+using Trakit.Commands;
 
 namespace trakit.https {
 	/// <summary>

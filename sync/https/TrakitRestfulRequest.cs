@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
-using trakit.commands;
-using trakit.objects;
+using Trakit.Commands;
+using Trakit.Objects;
 
 namespace trakit.https {
 	/// <summary>

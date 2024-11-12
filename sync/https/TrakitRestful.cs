@@ -5,9 +5,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
-using trakit.commands;
+using Trakit.Commands;
 using trakit.hmac;
-using trakit.tools;
+using Trakit.Tools;
 
 namespace trakit.https {
 	/// <summary>
@@ -67,7 +67,7 @@ namespace trakit.https {
 						throw new NotImplementedException($"{matches[0]} only supported by TrakitSocket");
 				}
 
-				var objNames = SPLITTER.Split(matches[0]).Select(s => text.plural(s)).ToArray();
+				var objNames = SPLITTER.Split(matches[0]).Select(s => Text.plural(s)).ToArray();
 				route = string.Join("/", objNames);
 				switch (matches[1]) {
 					case "Get":

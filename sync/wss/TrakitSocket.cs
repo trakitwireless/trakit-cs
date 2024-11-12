@@ -10,9 +10,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 using Newtonsoft.Json.Linq;
-using trakit.commands;
+using Trakit.Commands;
 using trakit.hmac;
-using trakit.tools;
+using Trakit.Tools;
 
 namespace trakit.wss {
 	/// <summary>
@@ -511,7 +511,7 @@ namespace trakit.wss {
 					case "remove":
 						return "remove" + objName;
 					case "list":
-						cmdName = "get" + text.plural(objName) + "List";
+						cmdName = "get" + Text.plural(objName) + "List";
 						if (matches.Length > 2 && matches[2] != "ByCompany") {
 							cmdName += matches[2];
 						}

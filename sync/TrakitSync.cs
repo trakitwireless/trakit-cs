@@ -1,9 +1,9 @@
 ﻿using System.Collections.Concurrent;
 using trakit.https;
-using trakit.objects;
+using Trakit.Objects;
 using trakit.wss;
 
-namespace trakit.sync {
+namespace Trakit.Sync {
 	/// <summary>
 	/// A class to help manage and synchronize <see cref="Component"/> objects.
 	/// </summary>

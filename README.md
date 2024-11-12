@@ -6,9 +6,8 @@ https://github.com/trakitwireless
 
 ### Prerequisites
 
-The `trakit.commands` package is required as since this library sends requests to the APIs.
-The `trakit.tools` package is required since the commands need to deserialize objects in the responses.
-The `trakit.objects` package is required as the JSON converters works for those objects.
+The `Trakit.Commands` package is required as since this library sends requests to the APIs. It also contains the `Trakit.Tools` namespace to deserialize objects in the responses.
+The `Trakit.Objects` package is required as the JSON converters works for those objects.
 We rely on the Newtonsoft.Json package for serialization between your application and the server.
 
 ## Questions and Feedback

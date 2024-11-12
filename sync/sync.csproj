@@ -1,11 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>netstandard2.0</TargetFramework>
-		<RootNamespace>trakit.sync</RootNamespace>
+		<RootNamespace>Trakit.Sync</RootNamespace>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<Title>Trak-iT API Synchronization</Title>
 		<PackageProjectUrl>https://apis.trakit.ca/dotnet</PackageProjectUrl>
-		<AssemblyName>trakit.$(MSBuildProjectName)</AssemblyName>
+		<AssemblyName>Trakit.$(MSBuildProjectName)</AssemblyName>
 		<AssemblyVersion>0.1.0.4</AssemblyVersion>
 		<FileVersion>0.1.0.4</FileVersion>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -26,7 +26,7 @@
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 	</ItemGroup>
 	<ItemGroup>
-		<ProjectReference Include="..\..\trakit-dotnet\commands\commands.csproj" />
-		<ProjectReference Include="..\..\trakit-dotnet\objects\objects.csproj" />
+		<ProjectReference Include="..\..\trakit-dotnet\commands\Commands.csproj" />
+		<ProjectReference Include="..\..\trakit-dotnet\objects\Objects.csproj" />
 	</ItemGroup>
 </Project>
