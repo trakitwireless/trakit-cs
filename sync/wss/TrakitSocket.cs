@@ -158,7 +158,7 @@ namespace trakit.wss {
 					this.status != TrakitSocketStatus.opened
 					|| !sauce.TrySetResult(this.status)
 				) {
-					sauce.SetCanceled();
+					sauce.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
@@ -209,7 +209,7 @@ namespace trakit.wss {
 					this.status != TrakitSocketStatus.closed
 					|| !sauce.TrySetResult(this.status)
 				) {
-					sauce.SetCanceled();
+					sauce.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
@@ -372,11 +372,11 @@ namespace trakit.wss {
 						: WebSocketCloseStatus.ProtocolError;
 				closeMessage = ex.Message;
 				closeReason = reason;
-				await this.client.CloseOutputAsync(
+				await (this.client?.CloseOutputAsync(
 					reason,
 					closeMessage,
 					ct
-				);
+				) ?? Task.CompletedTask);
 			}
 			_shutdown(closeMessage, closeReason);
 		}

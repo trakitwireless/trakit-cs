@@ -28,6 +28,5 @@
 	<ItemGroup>
 		<ProjectReference Include="..\..\trakit-dotnet\commands\commands.csproj" />
 		<ProjectReference Include="..\..\trakit-dotnet\objects\objects.csproj" />
-		<ProjectReference Include="..\..\trakit-dotnet\tools\tools.csproj" />
 	</ItemGroup>
 </Project>
