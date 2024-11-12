@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net;
 
-namespace trakit.https {
+namespace Trakit.Https {
 	/// <summary>
 	/// A request sent to one of Trak-iT's RESTful APIs.
 	/// </summary>

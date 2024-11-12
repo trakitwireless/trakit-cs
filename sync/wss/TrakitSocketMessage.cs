@@ -4,7 +4,7 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
 
-namespace trakit.wss {
+namespace Trakit.Wss {
 	/// <summary>
 	/// All Trak-iT WebSocket messages follow the format of "<c>name body</c>".
 	/// The <see cref="name"/> portion is formatted in lower-camel-case, and the <see cref="body"/> portion is JSON.

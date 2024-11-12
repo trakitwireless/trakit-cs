@@ -11,10 +11,10 @@ using System.Threading.Tasks;
 using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
-using trakit.hmac;
+using Trakit.Hmac;
 using Trakit.Tools;
 
-namespace trakit.wss {
+namespace Trakit.Wss {
 	/// <summary>
 	/// A wrapper for Trak-iT's <see cref="WebSocket"/> service, including service specific idiosyncrasies.
 	/// </summary>
@@ -260,7 +260,7 @@ namespace trakit.wss {
 						"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
 							_machine.key
 							+ ":"
-							+ signatures.createHmacSignedInput(
+							+ Signatures.createHmacSignedInput(
 								_machine.key,
 								_machine.secret,
 								DateTime.UtcNow,

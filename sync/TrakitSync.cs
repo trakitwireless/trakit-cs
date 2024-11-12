@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
-using trakit.https;
+using Trakit.Https;
 using Trakit.Objects;
-using trakit.wss;
+using Trakit.Wss;
 
 namespace Trakit.Sync {
 	/// <summary>

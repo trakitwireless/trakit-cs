@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net.WebSockets;
 
-namespace trakit.wss {
+namespace Trakit.Wss {
 	/// <summary>
 	/// 
 	/// </summary>

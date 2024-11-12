@@ -6,10 +6,10 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
-using trakit.hmac;
+using Trakit.Hmac;
 using Trakit.Tools;
 
-namespace trakit.https {
+namespace Trakit.Https {
 	/// <summary>
 	/// A helper for accessing Trak-iT's RESTful service.
 	/// </summary>
@@ -133,7 +133,7 @@ namespace trakit.https {
 			if ((_machine?.secret?.Length ?? 0) != 0) {
 				// use machine auth
 				request.RequestUri = new Uri(path);
-				signatures.addHmacHeader(request, _machine);
+				Signatures.addHmacHeader(request, _machine);
 			} else if (_sessionId != default) {
 				// user session in query-string
 				request.RequestUri = new Uri(path + $"{(!path.Contains("?") ? "?" : "&")}ghostId={_sessionId}");
