@@ -245,7 +245,7 @@ namespace trakit.wss {
 			var uri = this.baseAddress.AbsoluteUri.TrimEnd('/') + "/";
 			if (query?.Count() > 0) {
 				foreach (var pair in query) {
-					uri += $"{(uri.Contains("?") ? "&" : "?")}{pair.Key}={HttpUtility.UrlEncode(pair.Value)}";
+					uri += $"{(uri.Contains("?") ? "&" : "?")}{HttpUtility.UrlEncode(pair.Key)}={HttpUtility.UrlEncode(pair.Value)}";
 				}
 			}
 			if (headers?.Count() > 0) {
