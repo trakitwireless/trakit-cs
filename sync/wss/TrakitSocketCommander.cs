@@ -18,7 +18,7 @@ namespace Trakit.Wss {
 	/// <summary>
 	/// A wrapper for Trak-iT's <see cref="WebSocket"/> service, including service specific idiosyncrasies.
 	/// </summary>
-	public sealed class TrakitSocket : Commander, IDisposable {
+	public sealed class TrakitSocketCommander : TrakitCommander, IDisposable {
 		/// <summary>
 		/// Production <see cref="WebSocket"/> service URL.
 		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
@@ -60,8 +60,8 @@ namespace Trakit.Wss {
 		/// </remarks>
 		public TrakitSocketStatus Status { get; private set; } = TrakitSocketStatus.closed;
 
-		public TrakitSocket() : this(new Uri(URI_PROD)) { }
-		public TrakitSocket(Uri baseAddress) {
+		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
+		public TrakitSocketCommander(Uri baseAddress) {
 			this.BaseAddress = baseAddress;
 		}
 		/// <summary>
@@ -105,21 +105,21 @@ namespace Trakit.Wss {
 		/// Delegate for connection events.
 		/// </summary>
 		/// <param name="socket"></param>
-		public delegate void ConnectionHandler(TrakitSocket socket);
+		public delegate void ConnectionHandler(TrakitSocketCommander socket);
 		/// <summary>
 		/// Delegate for disconnection events.
 		/// </summary>
 		/// <param name="socket"></param>
 		/// <param name="message"></param>
 		/// <param name="reason"></param>
-		public delegate void DisconnectionHandler(TrakitSocket socket, string message, WebSocketCloseStatus reason);
+		public delegate void DisconnectionHandler(TrakitSocketCommander socket, string message, WebSocketCloseStatus reason);
 		/// <summary>
 		/// Delegate for incoming and outgoing message events.
 		/// </summary>
 		/// <param name="socket"></param>
 		/// <param name="message"></param>
 		/// <param name="type"></param>
-		public delegate void MessageHandler(TrakitSocket socket, TrakitSocketMessage message);
+		public delegate void MessageHandler(TrakitSocketCommander socket, TrakitSocketMessage message);
 
 		/// <summary>
 		/// Raised for each phase of the connection lifetime.
@@ -147,18 +147,18 @@ namespace Trakit.Wss {
 		CancellationTokenSource _sauce;
 		// an awaitable task which completes upon disconnection
 		Task _connecting() {
-			var sauce = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
-			void handler(TrakitSocket sender) {
+			var source = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+			void handler(TrakitSocketCommander sender) {
 				this.StatusChanged -= handler;
 				if (
 					this.Status != TrakitSocketStatus.opened
-					|| !sauce.TrySetResult(this.Status)
+					|| !source.TrySetResult(this.Status)
 				) {
-					sauce.TrySetCanceled();
+					source.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
-			return sauce.Task;
+			return source.Task;
 		}
 		// generic disconnect message
 		const string BYEBYE = "Goodbye!";
@@ -194,8 +194,8 @@ namespace Trakit.Wss {
 		}
 		// an awaitable task which completes upon disconnection
 		Task _disconnecting() {
-			var sauce = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
-			void handler(TrakitSocket sender) {
+			var source = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+			void handler(TrakitSocketCommander sender) {
 				// do nothing and return (do not unbind the handler)
 				// this is a normal part of the disconnection routine
 				if (this.Status == TrakitSocketStatus.closing) return;
@@ -203,14 +203,14 @@ namespace Trakit.Wss {
 				this.StatusChanged -= handler;
 				if (
 					this.Status != TrakitSocketStatus.closed
-					|| !sauce.TrySetResult(this.Status)
+					|| !source.TrySetResult(this.Status)
 				) {
-					sauce.TrySetCanceled();
+					source.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
-			if (this.Status == TrakitSocketStatus.closed) sauce.TrySetResult(this.Status);
-			return sauce.Task;
+			if (this.Status == TrakitSocketStatus.closed) source.TrySetResult(this.Status);
+			return source.Task;
 		}
 
 		/// <summary>
@@ -308,7 +308,6 @@ namespace Trakit.Wss {
 			return _disconnecting();
 		}
 		#endregion Connection/Disconnection
-
 		#region Messages - Receiving
 		// 1mb buffer for receiving; way more than enough
 		const int BUFFER = 1024 * 1024;
@@ -448,26 +447,11 @@ namespace Trakit.Wss {
 			_onStatus(TrakitSocketStatus.closing);
 			return (this.Client?.CloseOutputAsync(
 				reason,
-				TrakitSocket.errorToReason(message) ?? reason.ToString(),
+				TrakitSocketCommander.errorToReason(message) ?? reason.ToString(),
 				ct
 			) ?? Task.CompletedTask);
 		}
 		#endregion Messages - Sending
-
-		/// <summary>
-		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
-		/// </summary>
-		/// <typeparam name="TResponse"></typeparam>
-		/// <param name="request"></param>
-		/// <returns></returns>
-		/// <exception cref="InvalidOperationException"></exception>
-		public override async Task<TResponse> Command<TResponse>(Request request)
-			=> this.Serializer.ConvertFrom<TResponse>(
-				await this.Command(
-					_getCommandName(request),
-					this.Serializer.ConvertTo<JObject>(request)
-				)
-			);
 
 		#region Commands
 		// command name reply suffix
@@ -532,26 +516,26 @@ namespace Trakit.Wss {
 			parameters["reqId"] = ++_reqId;
 			var outbound = new TrakitSocketMessage(name, this.Serializer.Serialize(parameters));
 
-			var sauce = new TaskCompletionSource<JObject>();
-			void handleMsg(TrakitSocket sender, TrakitSocketMessage received) {
+			var source = new TaskCompletionSource<JObject>(TaskCreationOptions.RunContinuationsAsynchronously);
+			void handleMsg(TrakitSocketCommander sender, TrakitSocketMessage received) {
 				if (received.name == outbound.name + RESPONSE_SUFFIX) {
 					var response = this.Serializer.Deserialize<JObject>(received.body);
 					if (
-						int.TryParse(response?["reqId"]?.ToString(), out int reqId)
+						int.TryParse(response["reqId"]?.ToString(), out int reqId)
 						&& reqId == (int)parameters["reqId"]
 					) {
 						this.MessageReceived -= handleMsg;
 						this.StatusChanged -= handleDis;
-						if (!sauce.TrySetResult(response)) {
-							sauce.SetCanceled();
+						if (!source.TrySetResult(response)) {
+							source.TrySetCanceled();
 						}
 					}
 				}
 			}
-			void handleDis(TrakitSocket sender) {
+			void handleDis(TrakitSocketCommander sender) {
 				this.MessageReceived -= handleMsg;
 				this.StatusChanged -= handleDis;
-				sauce.SetCanceled();
+				source.TrySetCanceled();
 			}
 			this.MessageReceived += handleMsg;
 			this.StatusChanged += handleDis;
@@ -559,9 +543,23 @@ namespace Trakit.Wss {
 			// add to outgoing queue
 			var ct = _sauce.Token;
 			return _outgoing.TryAdd(outbound, -1, ct)
-				? sauce.Task
+				? source.Task
 				: Task.FromCanceled<JObject>(ct);
 		}
+		/// <summary>
+		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
+		/// </summary>
+		/// <typeparam name="TResponse"></typeparam>
+		/// <param name="request"></param>
+		/// <returns></returns>
+		/// <exception cref="InvalidOperationException"></exception>
+		public override async Task<TResponse> Command<TResponse>(Request request)
+			=> this.Serializer.ConvertFrom<TResponse>(
+				await this.Command(
+					_getCommandName(request),
+					this.Serializer.ConvertTo<JObject>(request)
+				)
+			);
 		#endregion Commands
 		#region Commands - Subscription
 		/// <summary>

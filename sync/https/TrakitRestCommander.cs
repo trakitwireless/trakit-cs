@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
 using Trakit.Hmac;
@@ -13,7 +14,7 @@ namespace Trakit.Https {
 	/// <summary>
 	/// A helper for accessing Trak-iT's RESTful service.
 	/// </summary>
-	public sealed class TrakitRestful : Commander, IDisposable {
+	public sealed class TrakitRestCommander : TrakitCommander, IDisposable {
 		/// <summary>
 		/// Production RESTful service URL.
 		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
@@ -34,8 +35,8 @@ namespace Trakit.Https {
 		/// </summary>
 		public HttpClient Client { get; private set; } = new HttpClient();
 
-		public TrakitRestful() : this(new Uri(URI_PROD)) { }
-		public TrakitRestful(Uri baseAddress) {
+		public TrakitRestCommander() : this(new Uri(URI_PROD)) { }
+		public TrakitRestCommander(Uri baseAddress) {
 			this.BaseAddress = baseAddress;
 		}
 		public void Dispose() {
@@ -46,13 +47,16 @@ namespace Trakit.Https {
 		}
 
 		#region Commands
+		// 
+		static readonly HttpMethod HTTP_PATCH = new HttpMethod("PATCH");
 		// used to split object names into paths
 		static readonly Regex SPLITTER = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
 		// outs the verb and path for the given request
 		void _commandHttp<TRequest>(TRequest request, out HttpMethod method, out string route) where TRequest : Request {
 			method = default;
 			route = default;
-			var matches = request.GetNameParts();
+			string query = "";
+			string[] matches = request.GetNameParts();
 			if (matches.Length > 1) {
 				switch (matches[0]) {
 					case "Self":
@@ -60,7 +64,7 @@ namespace Trakit.Https {
 						route = (matches[0] + "/" + matches[1]).ToLowerInvariant();
 						return;
 					case "Subscription":
-						throw new NotImplementedException($"{matches[0]} only supported by TrakitSocket");
+						throw new NotImplementedException($"{matches[0]} only supported by TrakitSocketCommander");
 				}
 
 				var objNames = SPLITTER.Split(matches[0]).Select(s => Text.Plural(s)).ToArray();
@@ -79,20 +83,28 @@ namespace Trakit.Https {
 						if (request is IReqListByCompany byCompany) {
 							route = $"companies/{byCompany.company.id}/{route}";
 						}
+						if (request is IReqListByLabels byLabels) {
+							query += $"&labels={HttpUtility.UrlEncode(string.Join(",", byLabels.labels))}";
+						}
+						if (request is IReqListByReferences byRefs) {
+							query += "&" + string.Join("&", byRefs.references.Select(p => $"{HttpUtility.UrlEncode(p.Key)}={HttpUtility.UrlEncode(p.Value)}"));
+						}
 						break;
 					case "Restore":
-						method = new HttpMethod("PATCH");
+						method = HTTP_PATCH;
 						route += "/restore";
 						break;
 					case "BatchMerge":
-						method = new HttpMethod("PATCH");
+						method = HTTP_PATCH;
 						break;
+					case "Suspend":
 					case "BatchSuspend":
-						method = new HttpMethod("PATCH");
+						method = HTTP_PATCH;
 						route += "/suspend";
 						break;
-					case "BatchRevive":
-						method = new HttpMethod("PATCH");
+					case "Reactivate":
+					case "BatchReactivate":
+						method = HTTP_PATCH;
 						route += "/revive";
 						break;
 					case "Delete":
@@ -107,6 +119,7 @@ namespace Trakit.Https {
 			if (method == default || string.IsNullOrEmpty(route)) {
 				throw new NotImplementedException($"no verb and/or route supported for {request.GetType().Name}");
 			}
+			if (query.Length > 0) route += "?" + query.Substring(1);
 		}
 		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
 		HttpRequestMessage _command(HttpMethod method, string path, JObject body, out string route, out string content) {
@@ -156,12 +169,12 @@ namespace Trakit.Https {
 				content = await response.Content.ReadAsStringAsync();
 				return this.Serializer.Deserialize<JObject>(content);
 			} catch (Exception ex) {
-				throw new TrakitRestfulException(
+				throw new TrakitRestException(
 					ex.Message,
-					new TrakitRestfulException.Input($"{method} {route}", body),
+					new TrakitRestException.Input($"{method} {route}", body),
 					response == null
 							? null
-							: new TrakitRestfulException.Output(response.StatusCode, response.ReasonPhrase, content),
+							: new TrakitRestException.Output(response.StatusCode, response.ReasonPhrase, content),
 					ex
 				);
 			}

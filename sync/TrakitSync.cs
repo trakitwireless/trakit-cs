@@ -11,11 +11,11 @@ namespace Trakit.Sync {
 		/// <summary>
 		/// 
 		/// </summary>
-		public TrakitRestful rest = new TrakitRestful();
+		public TrakitRestCommander rest = new TrakitRestCommander();
 		/// <summary>
 		/// 
 		/// </summary>
-		public TrakitSocket socket = new TrakitSocket();
+		public TrakitSocketCommander socket = new TrakitSocketCommander();
 		/// <summary>
 		/// 
 		/// </summary>

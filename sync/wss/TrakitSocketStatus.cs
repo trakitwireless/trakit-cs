@@ -2,7 +2,7 @@
 
 namespace Trakit.Wss {
 	/// <summary>
-	/// 
+	/// Describes the state of the <see cref="TrakitSocketCommander"/>'s connection to the Trak-iT WebSocket service.
 	/// </summary>
 	public enum TrakitSocketStatus : byte {
 		/// <summary>
