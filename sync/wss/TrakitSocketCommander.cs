@@ -44,7 +44,7 @@ namespace Trakit.Wss {
 		/// <returns></returns>
 		internal static string errorToReason(string value) {
 			value = WHITESPACE.Replace(value ?? "", " ").Trim();
-			return value == string.Empty ? null : value;
+			return value == string.Empty ? default : value;
 		}
 		#endregion Statics
 
@@ -69,10 +69,10 @@ namespace Trakit.Wss {
 		/// </summary>
 		public void Dispose() {
 			var wss = this.Client;
-			this.Client = null;
+			this.Client = default;
 			wss?.Abort();
 			wss?.Dispose();
-			wss = null;
+			wss = default;
 		}
 
 		#region Events
@@ -177,18 +177,18 @@ namespace Trakit.Wss {
 		async Task _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
 			_sauce.Cancel();
 			_outgoing.CompleteAdding();
-			try { await _sender; } catch { _sender = null; } finally { _sender?.Dispose(); }
-			try { await _receiver; } catch { _receiver = null; } finally { _receiver?.Dispose(); }
+			try { await _sender; } catch { _sender = default; } finally { _sender?.Dispose(); }
+			try { await _receiver; } catch { _receiver = default; } finally { _receiver?.Dispose(); }
 			var wss = this.Client;
-			this.Client = null;
+			this.Client = default;
 			_outgoing.Dispose();
-			_outgoing = null;
+			_outgoing = default;
 			_sauce.Dispose();
-			_sauce = null;
+			_sauce = default;
 			wss.Abort();
 			wss.Dispose();
 			_sender =
-			_receiver = null;
+			_receiver = default;
 
 			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
 		}
@@ -222,15 +222,15 @@ namespace Trakit.Wss {
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
 		public async Task Connect(
-			CancellationToken? ct = null,
-			IDictionary<string, string> query = null,
-			IDictionary<string, string> headers = null
+			CancellationToken? ct = default,
+			IDictionary<string, string> query = default,
+			IDictionary<string, string> headers = default
 		) {
 			if (this.Status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.Status}.");
 
 			_waitingForConnResp = true;
-			_closer = null;
-			_shutter = null;
+			_closer = default;
+			_shutter = default;
 			_sauce = new CancellationTokenSource();
 			_outgoing = new BlockingCollection<TrakitSocketMessage>();
 			this.Client = new ClientWebSocket();
@@ -390,7 +390,7 @@ namespace Trakit.Wss {
 			WebSocketCloseStatus closeReason = WebSocketCloseStatus.NormalClosure;
 			try {
 				while (_outgoing.TryTake(out TrakitSocketMessage message, -1, ct)) {
-					if (_closer == null) {
+					if (_closer == default) {
 						for (int offset = 0; offset < message.content.Length; offset += BUFFER) {
 							int length = Math.Min(message.content.Length - offset, BUFFER);
 							await (this.Client?.SendAsync(

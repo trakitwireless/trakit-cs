@@ -14,7 +14,7 @@ namespace Trakit.Wss {
 		public TrakitSocketException(
 			string message,
 			WebSocketCloseStatus reason,
-			Exception inner = null
+			Exception inner = default
 		) : base(message, inner) {
 			this.reason = reason;
 		}

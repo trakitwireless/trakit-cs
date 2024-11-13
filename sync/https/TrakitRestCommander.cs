@@ -41,7 +41,7 @@ namespace Trakit.Https {
 		}
 		public void Dispose() {
 			var http = this.Client;
-			this.Client = null;
+			this.Client = default;
 			http?.CancelPendingRequests();
 			http?.Dispose();
 		}
@@ -137,7 +137,7 @@ namespace Trakit.Https {
 			} else {
 				// no body, so add reqId to query-string
 				path += $"{(!path.Contains("?") ? "?" : "&")}reqId={_reqId}";
-				content = null;
+				content = default;
 			}
 			if ((_machine?.secret?.Length ?? 0) != 0) {
 				// use machine auth
@@ -158,11 +158,11 @@ namespace Trakit.Https {
 		/// <param name="parms">Optional request parameters.</param>
 		/// <returns>The JSON which appears in the body of the response.</returns>
 		public async Task<JObject> Command(HttpMethod method, string path, JObject parms = default) {
-			HttpRequestMessage request = null;
-			HttpResponseMessage response = null;
-			string route = null;
-			string body = null;
-			string content = null;
+			HttpRequestMessage request = default;
+			HttpResponseMessage response = default;
+			string route = default;
+			string body = default;
+			string content = default;
 			try {
 				request = _command(method, path, parms, out route, out body);
 				response = await this.Client.SendAsync(request);
@@ -172,8 +172,8 @@ namespace Trakit.Https {
 				throw new TrakitRestException(
 					ex.Message,
 					new TrakitRestException.Input($"{method} {route}", body),
-					response == null
-							? null
+					response == default
+							? default
 							: new TrakitRestException.Output(response.StatusCode, response.ReasonPhrase, content),
 					ex
 				);
