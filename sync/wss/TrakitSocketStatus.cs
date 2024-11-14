@@ -8,18 +8,18 @@ namespace Trakit.Wss {
 		/// <summary>
 		/// A connection is being established and is awaiting the innitial <c>connectionResponse</c> message.
 		/// </summary>
-		opening = 1,
+		Opening = 1,
 		/// <summary>
 		/// A connection is established and the <c>connectionResponse</c> message has been received.
 		/// </summary>
-		opened,
+		Opened,
 		/// <summary>
 		/// Either the client or the server has initiated a disconnection.
 		/// </summary>
-		closing,
+		Closing,
 		/// <summary>
 		/// The underlying <see cref="WebSocket"/> connection has been terminated.
 		/// </summary>
-		closed,
+		Closed,
 	}
 }

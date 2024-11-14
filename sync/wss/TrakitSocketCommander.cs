@@ -60,22 +60,44 @@ namespace Trakit.Wss {
 		/// <remarks>
 		/// Does not exactly overlap the <see cref="WebSocketState"/> values.
 		/// </remarks>
-		public TrakitSocketStatus Status { get; private set; } = TrakitSocketStatus.closed;
+		public TrakitSocketStatus Status { get; private set; } = TrakitSocketStatus.Closed;
 		/// <summary>
 		/// Timestamp recorded right after sending the most recent <see cref="WebSocketMessageType.Text"/> message was completed.
 		/// </summary>
-		public DateTime lastSent { get; private set; }
+		public DateTime LastSent { get; private set; }
 		/// <summary>
 		/// Timestamp recorded right after receiving the most recent <see cref="WebSocketMessageType.Text"/> message.
 		/// </summary>
-		public DateTime lastReceived { get; private set; }
+		public DateTime LastReceived { get; private set; }
+		/// <summary>
+		/// When set to a value of 30 seconds or more, will send a <c>noop {}</c> message to the server.
+		/// </summary>
+		/// <remarks>
+		/// In some firewalled environments, the built-in <see cref="WebSocket.DefaultKeepAliveInterval"/> is
+		/// insufficient. Enabling this value will still not guaruntee your connection will remain open, but
+		/// should make it more stable, or provide more immediate notice of severed connections. If you use
+		/// this option, we recommend setting 5 minutes or more.
+		/// </remarks>
+		public TimeSpan NoopKeepAlive {
+			get => _noopTimeout;
+			set {
+				_noopTimeout = value;
+				_noop.Interval = Math.Max(_noopTimeout.TotalMilliseconds, _noopDefault);
+				_noop.Enabled = _noop.Interval > _noopDefault;	// resets timer
+				if (_noop.Enabled) {
+					// if the connection is already open
+					// trigger noop right awway
+					if (this.Status == TrakitSocketStatus.Opened) {
+						_noopElapsed(null, null);    
+					}
+				}
+			}
+		}
 
 		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitSocketCommander(Uri baseAddress) {
 			this.BaseAddress = baseAddress;
-			_noop = new Timer();
 			_noop.Elapsed += _noopElapsed;
-			_noop.AutoReset = true;
 		}
 
 		/// <summary>
@@ -104,11 +126,11 @@ namespace Trakit.Wss {
 					this.Status = status;
 					this.StatusChanged?.Invoke(this);
 					switch (status) {
-						case TrakitSocketStatus.opened:
-							_noop.Enabled = true;
+						case TrakitSocketStatus.Opened:
+							_noop.Enabled = this.NoopKeepAlive.TotalMilliseconds > _noopDefault;
 							this.Connected?.Invoke(this);
 							break;
-						case TrakitSocketStatus.closed:
+						case TrakitSocketStatus.Closed:
 							_noop.Enabled = false;
 							if (!silent) this.Disconnected?.Invoke(this, message, reason);
 							break;
@@ -167,7 +189,7 @@ namespace Trakit.Wss {
 			void handler(TrakitSocketCommander sender) {
 				this.StatusChanged -= handler;
 				if (
-					this.Status != TrakitSocketStatus.opened
+					this.Status != TrakitSocketStatus.Opened
 					|| !source.TrySetResult(this.Status)
 				) {
 					source.TrySetCanceled();
@@ -206,7 +228,7 @@ namespace Trakit.Wss {
 			_sender =
 			_receiver = default;
 
-			_onStatus(TrakitSocketStatus.closed, closeMessage, closeReason);
+			_onStatus(TrakitSocketStatus.Closed, closeMessage, closeReason);
 		}
 		// an awaitable task which completes upon disconnection
 		Task _disconnecting() {
@@ -214,18 +236,18 @@ namespace Trakit.Wss {
 			void handler(TrakitSocketCommander sender) {
 				// do nothing and return (do not unbind the handler)
 				// this is a normal part of the disconnection routine
-				if (this.Status == TrakitSocketStatus.closing) return;
+				if (this.Status == TrakitSocketStatus.Closing) return;
 
 				this.StatusChanged -= handler;
 				if (
-					this.Status != TrakitSocketStatus.closed
+					this.Status != TrakitSocketStatus.Closed
 					|| !source.TrySetResult(this.Status)
 				) {
 					source.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
-			if (this.Status == TrakitSocketStatus.closed) source.TrySetResult(this.Status);
+			if (this.Status == TrakitSocketStatus.Closed) source.TrySetResult(this.Status);
 			return source.Task;
 		}
 
@@ -242,7 +264,7 @@ namespace Trakit.Wss {
 			IDictionary<string, string> query = default,
 			IDictionary<string, string> headers = default
 		) {
-			if (this.Status != TrakitSocketStatus.closed) throw new InvalidOperationException($"connection is {this.Status}.");
+			if (this.Status != TrakitSocketStatus.Closed) throw new InvalidOperationException($"connection is {this.Status}.");
 
 			_waitingForConnResp = true;
 			_closer = default;
@@ -289,7 +311,7 @@ namespace Trakit.Wss {
 				uri += $"{(uri.Contains("?") ? "&" : "?")}ghostId={_sessionId}";
 			}
 			try {
-				_onStatus(TrakitSocketStatus.opening);
+				_onStatus(TrakitSocketStatus.Opening);
 				await this.Client.ConnectAsync(new Uri(uri), source.Token);
 				var conn = _connecting();
 				_receiver = Task.Run(_receiving, _sauce.Token);
@@ -298,7 +320,7 @@ namespace Trakit.Wss {
 			} catch {
 				source.Cancel();
 				source.Dispose();
-				_onStatus(TrakitSocketStatus.closed, silent: true);
+				_onStatus(TrakitSocketStatus.Closed, silent: true);
 				throw;
 			}
 		}
@@ -316,7 +338,7 @@ namespace Trakit.Wss {
 			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
 			string message = BYEBYE
 		) {
-			if (this.Status != TrakitSocketStatus.opened) throw new InvalidOperationException($"connection is {this.Status}.");
+			if (this.Status != TrakitSocketStatus.Opened) throw new InvalidOperationException($"connection is {this.Status}.");
 
 			_closer = _closer ?? new TrakitSocketMessage(message, string.Empty, reason);
 			_outgoing.TryAdd(_closer, -1, _sauce.Token);
@@ -345,23 +367,23 @@ namespace Trakit.Wss {
 					WebSocketReceiveResult received;
 					do {
 						received = await this.Client.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
-						_noop.Interval = _noopTimeout;
+						_noop.Interval = _noopTimeout.TotalMilliseconds;
 						message.AddRange(buffer.Take(received.Count));
 					} while (!received.EndOfMessage);
 
 					switch (received.MessageType) {
 						case WebSocketMessageType.Text:
-							this.lastReceived = DateTime.Now;
+							this.LastReceived = DateTime.Now;
 							var msg = new TrakitSocketMessage(message);
 							if (_waitingForConnResp && msg.name == "connectionResponse") {
 								_waitingForConnResp = false;
 								this.Self = this.Serializer.Deserialize<RespSelfDetails>(msg.body);
-								_onStatus(TrakitSocketStatus.opened);
+								_onStatus(TrakitSocketStatus.Opened);
 							}
 							this.MessageReceived?.Invoke(this, msg);
 							break;
 						case WebSocketMessageType.Close:
-							_onStatus(TrakitSocketStatus.closing);
+							_onStatus(TrakitSocketStatus.Closing);
 							await this.Client.CloseOutputAsync(
 								received.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
 								closeMessage,
@@ -377,9 +399,9 @@ namespace Trakit.Wss {
 				}
 			} catch (OperationCanceledException) {
 				// CancellationToken cancelled
-				_onStatus(TrakitSocketStatus.closing);
+				_onStatus(TrakitSocketStatus.Closing);
 			} catch (Exception ex) {
-				_onStatus(TrakitSocketStatus.closing);
+				_onStatus(TrakitSocketStatus.Closing);
 				var reason = ex is TrakitSocketException tse
 						? tse.reason
 						: WebSocketCloseStatus.ProtocolError;
@@ -417,9 +439,9 @@ namespace Trakit.Wss {
 								offset + length == message.content.Length,
 								ct
 							) ?? Task.FromCanceled(ct));
-							_noop.Interval = _noopTimeout;
+							_noop.Interval = _noopTimeout.TotalMilliseconds;
 						}
-						this.lastSent = DateTime.Now;
+						this.LastSent = DateTime.Now;
 					} else {
 						message = _closer;
 						closeMessage = message.name;
@@ -440,7 +462,7 @@ namespace Trakit.Wss {
 				closeMessage = ex.Message;
 				if (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely) {
 					closeReason = WebSocketCloseStatus.EndpointUnavailable;
-					_onStatus(TrakitSocketStatus.closing);
+					_onStatus(TrakitSocketStatus.Closing);
 				} else {
 					closeReason = WebSocketCloseStatus.ProtocolError;
 					await _close(
@@ -464,7 +486,7 @@ namespace Trakit.Wss {
 		}
 		// sends the client requested close message with the reason and goodbye message
 		Task _close(WebSocketCloseStatus reason, string message, CancellationToken ct) {
-			_onStatus(TrakitSocketStatus.closing);
+			_onStatus(TrakitSocketStatus.Closing);
 			return (this.Client?.CloseOutputAsync(
 				reason,
 				TrakitSocketCommander.errorToReason(message) ?? reason.ToString(),
@@ -473,13 +495,18 @@ namespace Trakit.Wss {
 		}
 		#endregion Messages - Sending
 		#region Messages - Keep-alive
-		// default timeout for noop command
-		int _noopTimeout = (300 * 1000) - 500;
 		// the timer itself (reset every time .Interval is set)
-		Timer _noop;
+		Timer _noop = new Timer() {
+			Enabled = false,
+			AutoReset = true,
+		};
+		// almost 30 seconds
+		const int _noopDefault = (30 * 1000) - 1;
+		// default timeout for noop command
+		TimeSpan _noopTimeout;
 		// add outgoing message (don't use .Command because we don't need to await)
 		void _noopElapsed(object sender, ElapsedEventArgs e) {
-			if (!_outgoing.TryAdd(new TrakitSocketMessage("noop", "{}"), -1, _sauce.Token)) {
+			if (!_outgoing.TryAdd(new TrakitSocketMessage("noop", $"{{\"reqId\":{++_reqId}}}"), -1, _sauce.Token)) {
 				_noop.Enabled = false;
 			}
 		}
@@ -542,7 +569,7 @@ namespace Trakit.Wss {
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
 		public Task<JObject> Command(string name, JObject parameters) {
-			if (this.Status != TrakitSocketStatus.opened) throw new InvalidOperationException($"connection is {this.Status}.");
+			if (this.Status != TrakitSocketStatus.Opened) throw new InvalidOperationException($"connection is {this.Status}.");
 
 			// let's track this request.
 			parameters["reqId"] = ++_reqId;
