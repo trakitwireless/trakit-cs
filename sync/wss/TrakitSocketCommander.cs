@@ -8,11 +8,13 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
 using Trakit.Hmac;
 using Trakit.Tools;
+using Timer = System.Timers.Timer;
 
 namespace Trakit.Wss {
 	/// <summary>
@@ -71,7 +73,11 @@ namespace Trakit.Wss {
 		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitSocketCommander(Uri baseAddress) {
 			this.BaseAddress = baseAddress;
+			_noop = new Timer();
+			_noop.Elapsed += _noopElapsed;
+			_noop.AutoReset = true;
 		}
+
 		/// <summary>
 		/// Disposes of the status setting task.
 		/// </summary>
@@ -99,9 +105,11 @@ namespace Trakit.Wss {
 					this.StatusChanged?.Invoke(this);
 					switch (status) {
 						case TrakitSocketStatus.opened:
+							_noop.Enabled = true;
 							this.Connected?.Invoke(this);
 							break;
 						case TrakitSocketStatus.closed:
+							_noop.Enabled = false;
 							if (!silent) this.Disconnected?.Invoke(this, message, reason);
 							break;
 					}
@@ -337,6 +345,7 @@ namespace Trakit.Wss {
 					WebSocketReceiveResult received;
 					do {
 						received = await this.Client.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+						_noop.Interval = _noopTimeout;
 						message.AddRange(buffer.Take(received.Count));
 					} while (!received.EndOfMessage);
 
@@ -408,6 +417,7 @@ namespace Trakit.Wss {
 								offset + length == message.content.Length,
 								ct
 							) ?? Task.FromCanceled(ct));
+							_noop.Interval = _noopTimeout;
 						}
 						this.lastSent = DateTime.Now;
 					} else {
@@ -462,6 +472,18 @@ namespace Trakit.Wss {
 			) ?? Task.CompletedTask);
 		}
 		#endregion Messages - Sending
+		#region Messages - Keep-alive
+		// default timeout for noop command
+		int _noopTimeout = (300 * 1000) - 500;
+		// the timer itself (reset every time .Interval is set)
+		Timer _noop;
+		// add outgoing message (don't use .Command because we don't need to await)
+		void _noopElapsed(object sender, ElapsedEventArgs e) {
+			if (!_outgoing.TryAdd(new TrakitSocketMessage("noop", "{}"), -1, _sauce.Token)) {
+				_noop.Enabled = false;
+			}
+		}
+		#endregion Messages - Keep-alive
 
 		#region Commands
 		// command name reply suffix
