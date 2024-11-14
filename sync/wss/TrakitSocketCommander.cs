@@ -59,6 +59,14 @@ namespace Trakit.Wss {
 		/// Does not exactly overlap the <see cref="WebSocketState"/> values.
 		/// </remarks>
 		public TrakitSocketStatus Status { get; private set; } = TrakitSocketStatus.closed;
+		/// <summary>
+		/// Timestamp recorded right after sending the most recent <see cref="WebSocketMessageType.Text"/> message was completed.
+		/// </summary>
+		public DateTime lastSent { get; private set; }
+		/// <summary>
+		/// Timestamp recorded right after receiving the most recent <see cref="WebSocketMessageType.Text"/> message.
+		/// </summary>
+		public DateTime lastReceived { get; private set; }
 
 		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitSocketCommander(Uri baseAddress) {
@@ -334,6 +342,7 @@ namespace Trakit.Wss {
 
 					switch (received.MessageType) {
 						case WebSocketMessageType.Text:
+							this.lastReceived = DateTime.Now;
 							var msg = new TrakitSocketMessage(message);
 							if (_waitingForConnResp && msg.name == "connectionResponse") {
 								_waitingForConnResp = false;
@@ -400,6 +409,7 @@ namespace Trakit.Wss {
 								ct
 							) ?? Task.FromCanceled(ct));
 						}
+						this.lastSent = DateTime.Now;
 					} else {
 						message = _closer;
 						closeMessage = message.name;
