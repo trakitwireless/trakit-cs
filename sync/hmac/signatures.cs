@@ -67,7 +67,7 @@ namespace Trakit.Hmac {
 		/// <param name="absoluteUri"></param>
 		/// <param name="requestLength"></param>
 		/// <returns></returns>
-		public static string createHmacSignedInput(
+		public static string CreateHmacSignedInput(
 			string apiKey,
 			string secretBase64,
 			DateTime date,
@@ -113,23 +113,23 @@ namespace Trakit.Hmac {
 		/// <param name="uri"></param>
 		/// <returns></returns>
 		public static string GetSanitizedUri(this Uri uri) {
-			string sanitized = uri.AbsoluteUri.Substring(0, uri.AbsoluteUri.Length - uri.Query.Length - uri.Fragment.Length);
+			UriBuilder sanitized = new UriBuilder(uri);
 			if (!string.IsNullOrEmpty(uri.Query)) {
-				var parts = uri.Query.Substring(1)
-									.Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries)
-									.Select(
-										s => s.StartsWith(Signatures.SESSION_ID + "=")
-											|| s.StartsWith(Signatures.AUTH_TOKEN + "=")
-											|| s.StartsWith(Signatures.AUTH_SIGNATURE + "=")
-												? string.Empty
-												: s
-									)
-									.Where(s => s != string.Empty)
-									.ToArray();
-				if (parts.Length > 0) sanitized += "?" + string.Join("&", parts);
+				sanitized.Query = string.Join(
+					"&",
+					uri.Query.Substring(1)
+							.Split('&')
+							.Select(
+								s => s.StartsWith(Signatures.SESSION_ID + "=")
+									|| s.StartsWith(Signatures.AUTH_TOKEN + "=")
+									|| s.StartsWith(Signatures.AUTH_SIGNATURE + "=")
+										? string.Empty
+										: s
+							)
+							.Where(s => s != string.Empty)
+				);
 			}
-			if (uri.Fragment != string.Empty) sanitized += uri.Fragment;
-			return sanitized;
+			return sanitized.ToString();
 		}
 
 		/// <summary>
@@ -169,7 +169,7 @@ namespace Trakit.Hmac {
 			Convert.ToBase64String(Encoding.UTF8.GetBytes(
 				apiKey
 				+ ":"
-				+ Signatures.createHmacSignedInput(
+				+ Signatures.CreateHmacSignedInput(
 					apiKey,
 					secretBase64,
 					date,
