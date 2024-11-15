@@ -83,13 +83,11 @@ namespace Trakit.Wss {
 			set {
 				_noopTimeout = value;
 				_noop.Interval = Math.Max(_noopTimeout.TotalMilliseconds, _noopDefault);
-				_noop.Enabled = _noop.Interval > _noopDefault;	// resets timer
-				if (_noop.Enabled) {
+				_noop.Enabled = _noop.Interval > _noopDefault;    // resets timer
+				if (_noop.Enabled && this.Status == TrakitSocketStatus.Opened) {
 					// if the connection is already open
 					// trigger noop right awway
-					if (this.Status == TrakitSocketStatus.Opened) {
-						_noopElapsed(null, null);    
-					}
+					_noopElapsed(_noop, default);
 				}
 			}
 		}
@@ -189,13 +187,16 @@ namespace Trakit.Wss {
 			void handler(TrakitSocketCommander sender) {
 				this.StatusChanged -= handler;
 				if (
-					this.Status != TrakitSocketStatus.Opened
-					|| !source.TrySetResult(this.Status)
+					this.Status == TrakitSocketStatus.Opened
+					&& source.TrySetResult(this.Status)
 				) {
+					_sender = Task.Run(_sending, _sauce.Token);
+				} else {
 					source.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
+			_receiver = Task.Run(_receiving, _sauce.Token);
 			return source.Task;
 		}
 		// generic disconnect message
@@ -247,7 +248,6 @@ namespace Trakit.Wss {
 				}
 			}
 			this.StatusChanged += handler;
-			if (this.Status == TrakitSocketStatus.Closed) source.TrySetResult(this.Status);
 			return source.Task;
 		}
 
@@ -264,7 +264,7 @@ namespace Trakit.Wss {
 			IDictionary<string, string> query = default,
 			IDictionary<string, string> headers = default
 		) {
-			if (this.Status != TrakitSocketStatus.Closed) throw new InvalidOperationException($"connection is {this.Status}.");
+			if (this.Status != TrakitSocketStatus.Closed) throw new InvalidOperationException($"Connection is {this.Status}.");
 
 			_waitingForConnResp = true;
 			_closer = default;
@@ -276,11 +276,9 @@ namespace Trakit.Wss {
 			var source = ct.HasValue
 					? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value)
 					: _sauce;
-			var uri = this.BaseAddress.AbsoluteUri.TrimEnd('/') + "/";
+			var endpoint = new UriBuilder(this.BaseAddress);
 			if (query?.Count() > 0) {
-				foreach (var pair in query) {
-					uri += $"{(uri.Contains("?") ? "&" : "?")}{HttpUtility.UrlEncode(pair.Key)}={HttpUtility.UrlEncode(pair.Value)}";
-				}
+				endpoint.Query += "&" + string.Join("&", query.Select(p => HttpUtility.UrlEncode(p.Key) + "=" + HttpUtility.UrlEncode(p.Value)));
 			}
 			if (headers?.Count() > 0) {
 				foreach (var pair in headers) {
@@ -294,29 +292,29 @@ namespace Trakit.Wss {
 						"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
 							_machine.key
 							+ ":"
-							+ Signatures.createHmacSignedInput(
+							+ Signatures.CreateHmacSignedInput(
 								_machine.key,
 								_machine.secret,
 								DateTime.UtcNow,
 								HttpMethod.Get,
-								new Uri(uri),
+								endpoint.Uri,
 								0
 							)
 						))
 					);
 				} else {
-					uri += $"{(uri.Contains("?") ? "&" : "?")}shadowKey={HttpUtility.UrlEncode(_machine.key)}";
+					endpoint.Query += $"&shadowKey={HttpUtility.UrlEncode(_machine.key)}";
 				}
-			} else {
-				uri += $"{(uri.Contains("?") ? "&" : "?")}ghostId={_sessionId}";
+			} else if (_sessionId != default) {
+				endpoint.Query += $"&ghostId={_sessionId}";
+			}
+			if (endpoint.Query.Length > 1 && endpoint.Query[1] == '&') {
+				endpoint.Query = endpoint.Query.Substring(2);
 			}
 			try {
 				_onStatus(TrakitSocketStatus.Opening);
-				await this.Client.ConnectAsync(new Uri(uri), source.Token);
-				var conn = _connecting();
-				_receiver = Task.Run(_receiving, _sauce.Token);
-				_sender = Task.Run(_sending, _sauce.Token);
-				await conn.ConfigureAwait(false);
+				await this.Client.ConnectAsync(endpoint.Uri, source.Token);
+				await _connecting().ConfigureAwait(false);
 			} catch {
 				source.Cancel();
 				source.Dispose();
@@ -338,12 +336,12 @@ namespace Trakit.Wss {
 			WebSocketCloseStatus reason = WebSocketCloseStatus.NormalClosure,
 			string message = BYEBYE
 		) {
-			if (this.Status != TrakitSocketStatus.Opened) throw new InvalidOperationException($"connection is {this.Status}.");
+			if (this.Status != TrakitSocketStatus.Opened) throw new InvalidOperationException($"Connection is {this.Status}.");
 
+			var disconn = _disconnecting();
 			_closer = _closer ?? new TrakitSocketMessage(message, string.Empty, reason);
 			_outgoing.TryAdd(_closer, -1, _sauce.Token);
-
-			return _disconnecting();
+			return disconn;
 		}
 		#endregion Connection/Disconnection
 		#region Messages - Receiving
@@ -503,7 +501,7 @@ namespace Trakit.Wss {
 		// almost 30 seconds
 		const int _noopDefault = (30 * 1000) - 1;
 		// default timeout for noop command
-		TimeSpan _noopTimeout;
+		TimeSpan _noopTimeout = TimeSpan.FromMilliseconds(_noopDefault);
 		// add outgoing message (don't use .Command because we don't need to await)
 		void _noopElapsed(object sender, ElapsedEventArgs e) {
 			if (!_outgoing.TryAdd(new TrakitSocketMessage("noop", $"{{\"reqId\":{++_reqId}}}"), -1, _sauce.Token)) {
@@ -569,7 +567,7 @@ namespace Trakit.Wss {
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
 		public Task<JObject> Command(string name, JObject parameters) {
-			if (this.Status != TrakitSocketStatus.Opened) throw new InvalidOperationException($"connection is {this.Status}.");
+			if (this.Status != TrakitSocketStatus.Opened) throw new InvalidOperationException($"Connection is {this.Status}.");
 
 			// let's track this request.
 			parameters["reqId"] = ++_reqId;
