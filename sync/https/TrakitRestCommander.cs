@@ -47,7 +47,7 @@ namespace Trakit.Https {
 		}
 
 		#region Commands
-		// 
+		// why does dotnet not have this as a static?
 		static readonly HttpMethod HTTP_PATCH = new HttpMethod("PATCH");
 		// used to split object names into paths
 		static readonly Regex SPLITTER = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
@@ -153,13 +153,14 @@ namespace Trakit.Https {
 		/// <summary>
 		/// Sends a raw JSON request to the Trak-iT RESTful API and returns a task whose result is also JSON.
 		/// </summary>
-		/// <param name="method"><see cref="HttpMethod"/> for this request.</param>
 		/// <param name="path">The relative path from the <see cref="BaseAddress"/> for this request.</param>
+		/// <param name="method"><see cref="HttpMethod"/> for this request.</param>
 		/// <param name="parms">Optional request parameters.</param>
 		/// <returns>The JSON which appears in the body of the response.</returns>
-		public async Task<JObject> Command(HttpMethod method, string path, JObject parms = default) {
+		public async Task<JObject> Command(string path, HttpMethod method = default, JObject parms = default) {
 			HttpRequestMessage request = default;
 			HttpResponseMessage response = default;
+			method = method ?? HttpMethod.Get;
 			string route = default;
 			string body = default;
 			string content = default;
@@ -180,7 +181,7 @@ namespace Trakit.Https {
 			}
 		}
 		#endregion Commands
-	
+
 		/// <summary>
 		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
 		/// </summary>
@@ -191,8 +192,8 @@ namespace Trakit.Https {
 			_commandHttp(request, out HttpMethod method, out string route);
 			return this.Serializer.ConvertFrom<TResp>(
 				await this.Command(
-					method,
 					route,
+					method,
 					this.Serializer.ConvertTo<JObject>(request)
 				)
 			);
