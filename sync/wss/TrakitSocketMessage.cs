@@ -68,7 +68,6 @@ namespace Trakit.Wss {
 			string body, 
 			WebSocketCloseStatus reason = WebSocketCloseStatus.Empty
 		) {
-			this.incoming = false;
 			this.name = name;
 			this.body = body;
 			this.content = Encoding.UTF8.GetBytes($"{name} {body}");

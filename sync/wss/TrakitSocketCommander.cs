@@ -62,6 +62,10 @@ namespace Trakit.Wss {
 		/// </remarks>
 		public TrakitSocketStatus Status { get; private set; } = TrakitSocketStatus.Closed;
 		/// <summary>
+		/// Timestamp recorded right after establishing a connection and receiving the <c>connectionResponse</c> message.
+		/// </summary>
+		public DateTime LastConnected { get; private set; }
+		/// <summary>
 		/// Timestamp recorded right after sending the most recent <see cref="WebSocketMessageType.Text"/> message was completed.
 		/// </summary>
 		public DateTime LastSent { get; private set; }
@@ -266,7 +270,6 @@ namespace Trakit.Wss {
 		) {
 			if (this.Status != TrakitSocketStatus.Closed) throw new InvalidOperationException($"Connection is {this.Status}.");
 
-			_waitingForConnResp = true;
 			_closer = default;
 			_shutter = default;
 			_sauce = new CancellationTokenSource();
@@ -349,10 +352,6 @@ namespace Trakit.Wss {
 		const int BUFFER = 1024 * 1024;
 		// task to handle incoming messages and server-side disconnections
 		Task _receiver;
-		// before we receive the connectionResponse message, the socket is in an unstable state
-		// and can end the session if a command is sent
-		// so we only mark this wrapper as "open" when the underlying connection is open, and we've received this message.
-		bool _waitingForConnResp;
 		// handles incoming messages and server initiated disconnections.
 		async Task _receiving() {
 			var ct = _sauce.Token;
@@ -373,10 +372,21 @@ namespace Trakit.Wss {
 						case WebSocketMessageType.Text:
 							this.LastReceived = DateTime.Now;
 							var msg = new TrakitSocketMessage(message);
-							if (_waitingForConnResp && msg.name == "connectionResponse") {
-								_waitingForConnResp = false;
-								this.Self = this.Serializer.Deserialize<RespSelfDetails>(msg.body);
-								_onStatus(TrakitSocketStatus.Opened);
+							switch (msg.name) {
+								case "connectionResponse":
+									this.LastConnected = this.LastReceived;
+									this.Self = this.Serializer.Deserialize<RespSelfDetails>(msg.body);
+									_onStatus(TrakitSocketStatus.Opened);
+									break;
+								case "sessionMachineMerged":
+									this.Self.machine = this.Serializer.Deserialize<SelfMachine>(msg.body);
+									break;
+								case "sessionGeneralMerged":
+									this.Self.user.General = this.Serializer.Deserialize<SelfUserGeneral>(msg.body);
+									break;
+								case "sessionAdvancedMerged":
+									this.Self.user.Advanced = this.Serializer.Deserialize<SelfUserAdvanced>(msg.body);
+									break;
 							}
 							this.MessageReceived?.Invoke(this, msg);
 							break;
