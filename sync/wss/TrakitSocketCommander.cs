@@ -213,23 +213,23 @@ namespace Trakit.Wss {
 		void _shutdown(string closeMessage, WebSocketCloseStatus closeReason) {
 			lock (_shutlock) {
 				// it may be possible that this assignment happens twice, which is why the lock object is used.
-				_shutter = _shutter ?? Task.Run(async () => await _shutting(closeMessage, closeReason).ConfigureAwait(false));
+				_shutter = _shutter ?? Task.Run(() => _shutting(closeMessage, closeReason));
 			}
 		}
 		// handles the disconnect, disposes of resources, and awaits tasks doing send/receive
-		async Task _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
+		void _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
+			var wss = this.Client;
 			_sauce.Cancel();
 			_outgoing.CompleteAdding();
-			try { await _sender; } catch { _sender = default; } finally { _sender?.Dispose(); }
-			try { await _receiver; } catch { _receiver = default; } finally { _receiver?.Dispose(); }
-			var wss = this.Client;
+			try { _sender?.Wait(); } catch { }
+			try { _receiver?.Wait(); } catch { }
 			this.Client = default;
 			_outgoing.Dispose();
 			_outgoing = default;
 			_sauce.Dispose();
 			_sauce = default;
-			wss.Abort();
-			wss.Dispose();
+			wss?.Abort();
+			wss?.Dispose();
 			_sender =
 			_receiver = default;
 
@@ -465,6 +465,7 @@ namespace Trakit.Wss {
 				}
 			} catch (OperationCanceledException) {
 				// shutting down
+				_onStatus(TrakitSocketStatus.Closing);
 			} catch (WebSocketException ex) {
 				// socket disconnect
 				closeMessage = ex.Message;
