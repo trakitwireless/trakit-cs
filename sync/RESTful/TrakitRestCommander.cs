@@ -10,7 +10,7 @@ using Trakit.Commands;
 using Trakit.Hmac;
 using Trakit.Tools;
 
-namespace Trakit.Https {
+namespace Trakit.Restful {
 	/// <summary>
 	/// A helper for accessing Trak-iT's RESTful service.
 	/// </summary>

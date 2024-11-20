@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net;
 
-namespace Trakit.Https {
+namespace Trakit.Restful {
 	/// <summary>
 	/// Represents a communication error with the underlying Trak-iT RESTful service.
 	/// </summary>

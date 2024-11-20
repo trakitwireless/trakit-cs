@@ -1,6 +1,6 @@
 ﻿using System.Net.WebSockets;
 
-namespace Trakit.Wss {
+namespace Trakit.Socket {
 	/// <summary>
 	/// Describes the state of the <see cref="TrakitSocketCommander"/>'s connection to the Trak-iT WebSocket service.
 	/// </summary>

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net.WebSockets;
 
-namespace Trakit.Wss {
+namespace Trakit.Socket {
 	/// <summary>
 	/// Represents a communication error with the underlying Trak-iT <see cref="WebSocket"/> service.
 	/// </summary>

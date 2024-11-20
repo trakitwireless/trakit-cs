@@ -16,7 +16,7 @@ using Trakit.Hmac;
 using Trakit.Tools;
 using Timer = System.Timers.Timer;
 
-namespace Trakit.Wss {
+namespace Trakit.Socket {
 	/// <summary>
 	/// A wrapper for Trak-iT's <see cref="WebSocket"/> service, including service specific idiosyncrasies.
 	/// </summary>
