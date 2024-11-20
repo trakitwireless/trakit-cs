@@ -320,7 +320,6 @@ namespace Trakit.Wss {
 				await _connecting().ConfigureAwait(false);
 			} catch {
 				source.Cancel();
-				source.Dispose();
 				_onStatus(TrakitSocketStatus.Closed, silent: true);
 				throw;
 			}

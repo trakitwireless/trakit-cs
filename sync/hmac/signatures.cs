@@ -113,23 +113,22 @@ namespace Trakit.Hmac {
 		/// <param name="uri"></param>
 		/// <returns></returns>
 		public static string GetSanitizedUri(this Uri uri) {
-			UriBuilder sanitized = new UriBuilder(uri);
+			string sanitized = $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
 			if (!string.IsNullOrEmpty(uri.Query)) {
-				sanitized.Query = string.Join(
-					"&",
-					uri.Query.Substring(1)
-							.Split('&')
-							.Select(
-								s => s.StartsWith(Signatures.SESSION_ID + "=")
-									|| s.StartsWith(Signatures.AUTH_TOKEN + "=")
-									|| s.StartsWith(Signatures.AUTH_SIGNATURE + "=")
-										? string.Empty
-										: s
-							)
-							.Where(s => s != string.Empty)
-				);
+				var parts = uri.Query.Substring(1)
+									.Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries)
+									.Select(
+										s => s.StartsWith(SESSION_ID + "=")
+											|| s.StartsWith(AUTH_TOKEN + "=")
+											|| s.StartsWith(AUTH_SIGNATURE + "=")
+												? ""
+												: s
+									)
+									.Where(s => s != "");
+				if (parts.Count() > 0) sanitized += "?" + string.Join("&", parts);
 			}
-			return sanitized.ToString();
+			if (!string.IsNullOrEmpty(uri.Fragment)) sanitized += uri.Fragment;
+			return sanitized;
 		}
 
 		/// <summary>
