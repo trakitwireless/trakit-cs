@@ -12,27 +12,31 @@ using System.Timers;
 using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
-using Trakit.Hmac;
+using Trakit.Https;
+using Trakit.Objects;
 using Trakit.Tools;
 using Timer = System.Timers.Timer;
 
 namespace Trakit.Socket {
 	/// <summary>
-	/// A wrapper for Trak-iT's <see cref="WebSocket"/> service, including service specific idiosyncrasies.
+	/// Uses Trak-iT's <see cref="WebSocket"/> service to access and manipulate all <see cref="Component">Trak-iT API Objects</see>.
 	/// </summary>
-	public sealed class TrakitSocketCommander : TrakitObjectCommander, IDisposable {
+	public sealed class TrakitSocketCommander : TrakitObjectCommander<ClientWebSocket>, IDisposable {
 		/// <summary>
 		/// Production <see cref="WebSocket"/> service URL.
-		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
 		/// </summary>
+		/// <remarks>
+		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
+		/// Both services access the same data-set, so be careful making changes as they will be reflected in production as well.
+		/// </remarks>
 		public const string URI_PROD = "wss://socket.trakit.ca";
 		/// <summary>
 		/// Testing or beta <see cref="WebSocket"/> service URL.
-		/// This service is not covered by the SLA and should be used to test your own code before deployment.
-		/// Throttling of connections and commands is tighter to help you diagnose issues before switching to production.
 		/// </summary>
 		/// <remarks>
-		/// Both services access the same dataset, so be careful making changes as they will be reflected in production as well.
+		/// This service is not covered by the SLA and should be used to test your own code before deployment.
+		/// Throttling of connections and commands is tighter to help you diagnose issues before switching to production.
+		/// Both services access the same data-set, so be careful making changes as they will be reflected in production as well.
 		/// </remarks>
 		public const string URI_BETA = "wss://kraken.trakit.ca";
 		#region Statics
@@ -50,10 +54,6 @@ namespace Trakit.Socket {
 		}
 		#endregion Statics
 
-		/// <summary>
-		/// The underlying connection.
-		/// </summary>
-		public ClientWebSocket Client { get; private set; }
 		/// <summary>
 		/// This <see cref="WebSocket"/> wrapper's current connection status.
 		/// </summary>
@@ -99,6 +99,7 @@ namespace Trakit.Socket {
 		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitSocketCommander(Uri baseAddress) {
 			this.BaseAddress = baseAddress;
+			this.Client = new ClientWebSocket();
 			_noop.Elapsed += _noopElapsed;
 		}
 
@@ -521,6 +522,8 @@ namespace Trakit.Socket {
 		#endregion Messages - Keep-alive
 
 		#region Commands
+		// Used to correlate requests and responses.
+		int _reqId;
 		// command name reply suffix
 		const string RESPONSE_SUFFIX = "Response";
 		// converts the Request type into a WebSocket command name

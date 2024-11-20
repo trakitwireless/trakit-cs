@@ -1,21 +1,14 @@
 ﻿using System;
-using System.Linq;
 using System.Net.Http;
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Web;
-using Newtonsoft.Json.Linq;
 using Trakit.Commands;
-using Trakit.Hmac;
-using Trakit.Https;
-using Trakit.Tools;
+using Trakit.Objects;
 
 namespace Trakit.Imaging {
 	/// <summary>
-	/// 
+	/// Used to upload and download Trak-iT hosted <see cref="Document"/>s.
 	/// </summary>
-	public sealed class TrakitHostingCommander : TrakitCommander, IDisposable {
+	public sealed class TrakitHostingCommander : TrakitCommander<HttpClient>, IDisposable {
 		/// <summary>
 		/// 
 		/// </summary>
@@ -34,13 +27,9 @@ namespace Trakit.Imaging {
 		/// </remarks>
 		public const string URI_BETA = "https://wanshitong.trakit.ca";
 
-		/// <summary>
-		/// The underlying client making HTTPS requests.
-		/// </summary>
-		public HttpClient Client { get; private set; } = new HttpClient();
-
 		public TrakitHostingCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitHostingCommander(Uri baseAddress) {
+			this.Client = new HttpClient();
 			this.BaseAddress = baseAddress;
 		}
 		public void Dispose() {

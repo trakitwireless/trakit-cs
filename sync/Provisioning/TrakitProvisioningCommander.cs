@@ -2,13 +2,12 @@
 using System.Net.Http;
 using System.Threading.Tasks;
 using Trakit.Commands;
-using Trakit.Objects;
 
-namespace Trakit.Imaging {
+namespace Trakit.Provisioning {
 	/// <summary>
-	/// Used to upload and download Trak-iT hosted <see cref="Picture"/>s, <see cref="IconGlyph"/>s, and <see cref="DispatchStep.signature"/>s.
+	/// Used to verify, authenticate, and configure hardware with the Trak-iT service.
 	/// </summary>
-	public sealed class TrakitImageCommander : TrakitCommander<HttpClient>, IDisposable {
+	public sealed class TrakitProvisioningCommander : TrakitCommander<HttpClient>, IDisposable {
 		/// <summary>
 		/// 
 		/// </summary>
@@ -16,7 +15,7 @@ namespace Trakit.Imaging {
 		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
 		/// Both services access the same data-set, so be careful making changes as they will be reflected in production as well.
 		/// </remarks>
-		public const string URI_PROD = "https://img.trakit.ca";
+		public const string URI_PROD = "https://modem.trakit.ca";
 		/// <summary>
 		/// 
 		/// </summary>
@@ -25,10 +24,10 @@ namespace Trakit.Imaging {
 		/// Throttling of connections and commands is tighter to help you diagnose issues before switching to production.
 		/// Both services access the same data-set, so be careful making changes as they will be reflected in production as well.
 		/// </remarks>
-		public const string URI_BETA = "https://boogeyman.trakit.ca";
+		public const string URI_BETA = "https://chimera.trakit.ca";
 
-		public TrakitImageCommander() : this(new Uri(URI_PROD)) { }
-		public TrakitImageCommander(Uri baseAddress) {
+		public TrakitProvisioningCommander() : this(new Uri(URI_PROD)) { }
+		public TrakitProvisioningCommander(Uri baseAddress) {
 			this.BaseAddress = baseAddress;
 			this.Client = new HttpClient();
 		}

@@ -7,38 +7,37 @@ using System.Threading.Tasks;
 using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
-using Trakit.Hmac;
 using Trakit.Https;
+using Trakit.Objects;
 using Trakit.Tools;
 
 namespace Trakit.Restful {
 	/// <summary>
-	/// A helper for accessing Trak-iT's RESTful service.
+	/// Uses Trak-iT's RESTful service to access and manipulate all <see cref="Component">Trak-iT API Objects</see>.
 	/// </summary>
-	public sealed class TrakitRestfulCommander : TrakitObjectCommander, IDisposable {
+	public sealed class TrakitRestfulCommander : TrakitObjectCommander<HttpClient>, IDisposable {
 		/// <summary>
 		/// Production RESTful service URL.
-		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
 		/// </summary>
+		/// <remarks>
+		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
+		/// Both services access the same data-set, so be careful making changes as they will be reflected in production as well.
+		/// </remarks>
 		public const string URI_PROD = "https://rest.trakit.ca";
 		/// <summary>
 		/// Testing or beta RESTful service URL.
-		/// This service is not covered by the SLA and should be used to test your own code before deployment.
-		/// Throttling of connections and commands is tighter to help you diagnose issues before switching to production.
 		/// </summary>
 		/// <remarks>
-		/// Both services access the same dataset, so be careful making changes as they will be reflected in production as well.
+		/// This service is not covered by the SLA and should be used to test your own code before deployment.
+		/// Throttling of connections and commands is tighter to help you diagnose issues before switching to production.
+		/// Both services access the same data-set, so be careful making changes as they will be reflected in production as well.
 		/// </remarks>
 		public const string URI_BETA = "https://mindflayer.trakit.ca";
-
-		/// <summary>
-		/// The underlying client making HTTPS requests.
-		/// </summary>
-		public HttpClient Client { get; private set; } = new HttpClient();
 
 		public TrakitRestfulCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitRestfulCommander(Uri baseAddress) {
 			this.BaseAddress = baseAddress;
+			this.Client = new HttpClient();
 		}
 		public void Dispose() {
 			var http = this.Client;
@@ -124,12 +123,10 @@ namespace Trakit.Restful {
 		}
 		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
 		HttpRequestMessage _command(HttpMethod method, string path, JObject body, out string route, out string content) {
-			_reqId++; // always
 			var request = new HttpRequestMessage(method, path);
 			path = $"{this.BaseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
 			if (body != default) {
 				// request has a body
-				body["reqId"] = _reqId;
 				request.Content = new StringContent(
 					content = this.Serializer.Serialize(body),
 					Encoding.UTF8,
@@ -137,7 +134,6 @@ namespace Trakit.Restful {
 				);
 			} else {
 				// no body, so add reqId to query-string
-				path += $"{(!path.Contains("?") ? "?" : "&")}reqId={_reqId}";
 				content = default;
 			}
 			if ((_machine?.secret?.Length ?? 0) != 0) {
