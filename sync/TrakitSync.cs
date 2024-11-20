@@ -11,7 +11,7 @@ namespace Trakit.Sync {
 		/// <summary>
 		/// 
 		/// </summary>
-		public TrakitRestCommander rest = new TrakitRestCommander();
+		public TrakitRestfulCommander rest = new TrakitRestfulCommander();
 		/// <summary>
 		/// 
 		/// </summary>

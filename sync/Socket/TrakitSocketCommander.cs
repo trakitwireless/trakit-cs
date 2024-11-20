@@ -20,7 +20,7 @@ namespace Trakit.Socket {
 	/// <summary>
 	/// A wrapper for Trak-iT's <see cref="WebSocket"/> service, including service specific idiosyncrasies.
 	/// </summary>
-	public sealed class TrakitSocketCommander : TrakitCommander, IDisposable {
+	public sealed class TrakitSocketCommander : TrakitObjectCommander, IDisposable {
 		/// <summary>
 		/// Production <see cref="WebSocket"/> service URL.
 		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
