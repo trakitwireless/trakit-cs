@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Trakit.Objects;
 
-namespace Trakit.Hmac {
+namespace Trakit.Https {
 	/// <summary>
 	/// 
 	/// </summary>
