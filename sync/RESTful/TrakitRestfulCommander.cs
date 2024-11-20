@@ -8,13 +8,14 @@ using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
 using Trakit.Hmac;
+using Trakit.Https;
 using Trakit.Tools;
 
 namespace Trakit.Restful {
 	/// <summary>
 	/// A helper for accessing Trak-iT's RESTful service.
 	/// </summary>
-	public sealed class TrakitRestCommander : TrakitCommander, IDisposable {
+	public sealed class TrakitRestfulCommander : TrakitObjectCommander, IDisposable {
 		/// <summary>
 		/// Production RESTful service URL.
 		/// This service is covered by the SLA and should be used for serices and code running in your own production environment.
@@ -35,8 +36,8 @@ namespace Trakit.Restful {
 		/// </summary>
 		public HttpClient Client { get; private set; } = new HttpClient();
 
-		public TrakitRestCommander() : this(new Uri(URI_PROD)) { }
-		public TrakitRestCommander(Uri baseAddress) {
+		public TrakitRestfulCommander() : this(new Uri(URI_PROD)) { }
+		public TrakitRestfulCommander(Uri baseAddress) {
 			this.BaseAddress = baseAddress;
 		}
 		public void Dispose() {
@@ -170,12 +171,12 @@ namespace Trakit.Restful {
 				content = await response.Content.ReadAsStringAsync();
 				return this.Serializer.Deserialize<JObject>(content);
 			} catch (Exception ex) {
-				throw new TrakitRestException(
+				throw new TrakitHttpsException(
 					ex.Message,
-					new TrakitRestException.Input($"{method} {route}", body),
+					new TrakitHttpsException.Input($"{method} {route}", body),
 					response == default
 							? default
-							: new TrakitRestException.Output(response.StatusCode, response.ReasonPhrase, content),
+							: new TrakitHttpsException.Output(response.StatusCode, response.ReasonPhrase, content),
 					ex
 				);
 			}

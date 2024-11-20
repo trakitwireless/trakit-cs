@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Net;
 
-namespace Trakit.Restful {
+namespace Trakit.Https {
 	/// <summary>
 	/// Represents a communication error with the underlying Trak-iT RESTful service.
 	/// </summary>
-	public class TrakitRestException : Exception {
+	public class TrakitHttpsException : Exception {
 		/// <summary>
 		/// Details about the request that threw the exception.
 		/// </summary>
@@ -57,7 +57,7 @@ namespace Trakit.Restful {
 		/// </summary>
 		public Output Response;
 
-		public TrakitRestException(
+		public TrakitHttpsException(
 			string message,
 			Input request,
 			Output response
@@ -65,7 +65,7 @@ namespace Trakit.Restful {
 			this.Request = request;
 			this.Response = response;
 		}
-		public TrakitRestException(
+		public TrakitHttpsException(
 			string message,
 			Input request,
 			Output response,
