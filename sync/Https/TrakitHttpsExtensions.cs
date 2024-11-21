@@ -7,11 +7,11 @@ using System.Security.Cryptography;
 using System.Text;
 using Trakit.Objects;
 
-namespace Trakit.Https {
+namespace Trakit.Https.Extensions {
 	/// <summary>
 	/// Extension methods to assist with communication.
 	/// </summary>
-	public static class TrakitExtensions {
+	public static class TrakitHttpsExtensions {
 		/// <summary>
 		/// Common name for session ID used by all systems.
 		/// </summary>

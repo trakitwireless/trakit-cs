@@ -8,6 +8,7 @@ using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
 using Trakit.Https;
+using Trakit.Https.Extensions;
 using Trakit.Objects;
 using Trakit.Tools;
 
