@@ -1,15 +1,15 @@
 ﻿using System;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 using Trakit.Objects;
 
 namespace Trakit.Https {
 	/// <summary>
-	/// 
+	/// Extension methods to assist with communication.
 	/// </summary>
 	public static class TrakitExtensions {
 		/// <summary>
@@ -22,54 +22,10 @@ namespace Trakit.Https {
 		public const string MACHINE_KEY = "shadowKey";
 
 		/// <summary>
-		/// Creates a signature for a given input using the given secret.
-		/// </summary>
-		/// <param name="secret"></param>
-		/// <param name="input"></param>
-		/// <returns></returns>
-		public static string HmacSignInput(byte[] secret, byte[] input) {
-			using (var hmac = new HMACSHA256(secret)) {
-				return Convert.ToBase64String(hmac.ComputeHash(input));
-			}
-		}
-
-		/// <summary>
-		/// Creates an HMAC256 signed input for use in <see cref="HttpRequestMessage"/>s.
-		/// </summary>
-		/// <param name="apiKey"></param>
-		/// <param name="apiSecret"></param>
-		/// <param name="date"></param>
-		/// <param name="method"></param>
-		/// <param name="absoluteUri"></param>
-		/// <param name="requestLength"></param>
-		/// <returns></returns>
-		public static string HmacCreateSignature(
-			string apiKey,
-			string apiSecret,
-			DateTimeOffset date,
-			HttpMethod method,
-			Uri absoluteUri,
-			long requestLength
-		) => Convert.ToBase64String(Encoding.UTF8.GetBytes(
-			apiKey
-			+ ":"
-			+ TrakitExtensions.HmacSignInput(
-				Convert.FromBase64String(apiSecret), 
-				Encoding.UTF8.GetBytes(string.Join("\n", new[] {
-					apiKey,
-					date.UtcDateTime.ToString("yyyyMMddHHmmss"),
-					method.ToString(),
-					absoluteUri.GetSanitizedUri(),
-					requestLength.ToString()
-				}))
-			)
-		));
-
-		/// <summary>
 		/// Returns the URI with the session/machine keys removed from the <see cref="Uri.Query"/>.
 		/// </summary>
-		/// <param name="uri"></param>
-		/// <returns></returns>
+		/// <param name="uri"><see cref="Uri"/> being sanitized for the HMAC signature.</param>
+		/// <returns>A new <see cref="Uri"/> without the <see cref="SESSION_ID"/> or <see cref="MACHINE_KEY"/> values in the <see cref="Uri.Query"/>.</returns>
 		public static string GetSanitizedUri(this Uri uri) {
 			UriBuilder built = new UriBuilder(uri);
 			if (!string.IsNullOrEmpty(uri.Query)) {
@@ -83,28 +39,60 @@ namespace Trakit.Https {
 			}
 			return built.Uri.ToString();
 		}
-
 		/// <summary>
-		/// 
+		/// Modifies the given request with <c>Date</c> and <c>Authorization</c> headers using an HMAC256 signature.
 		/// </summary>
-		/// <param name="machine"></param>
-		/// <param name="request"></param>
+		/// <remarks>
+		/// This call should be after all other content and payload is added to ensure the signature is correct.
+		/// </remarks>
+		/// <param name="machine"><see cref="Machine"/> signing the <paramref name="request"/>.</param>
+		/// <param name="request">The request being sent to the Trak-iT API service.</param>
 		/// <param name="date">Timestamp for the request.  If no value is given, then <see cref="DateTimeOffset.UtcNow"/> is used. Trak-iT APIs only allow requests up to <c>15 seconds</c> old.</param>
 		public static void AuthorizeRequest(this Machine machine, HttpRequestMessage request, DateTimeOffset? date = default) {
-			request.Headers.Date = date 
-							?? request.Headers.Date 
+			request.Headers.Date = date
+							?? request.Headers.Date
 							?? DateTimeOffset.UtcNow;
 			request.Headers.Authorization = new AuthenticationHeaderValue(
 				"HMAC256",
-				TrakitExtensions.HmacCreateSignature(
-					machine.key,
-					machine.secret,
+				machine.CreateHmacCreateSignature(
 					request.Headers.Date.Value,
 					request.Method,
 					request.RequestUri,
 					request.Content?.Headers?.ContentLength ?? 0
 				)
 			);
+		}
+		/// <summary>
+		/// Creates an HMAC256 signed input for use in <see cref="HttpRequestHeaders"/>s and <see cref="ClientWebSocketOptions"/>.
+		/// </summary>
+		/// <remarks>
+		/// The output of this function is used as the value of the <c>Authorization</c> header.</remarks>
+		/// <param name="machine"><see cref="Machine"/> creating the signature.</param>
+		/// <param name="date">Timestamp for when the request is sent.</param>
+		/// <param name="method">HTTP verb of the request.</param>
+		/// <param name="absoluteUri">Full <see cref="Uri"/> of the request.</param>
+		/// <param name="contentLength">Request content body length.</param>
+		/// <returns>A Base64 encoded signature from the given request details.</returns>
+		public static string CreateHmacCreateSignature(
+			this Machine machine,
+			DateTimeOffset date,
+			HttpMethod method,
+			Uri absoluteUri,
+			long contentLength
+		) {
+			using (var hmac = new HMACSHA256(Convert.FromBase64String(machine.secret))) {
+				return Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(
+					machine.key
+					+ ":"
+					+ string.Join("\n", new[] {
+						machine.key,
+						date.UtcDateTime.ToString("yyyyMMddHHmmss"),
+						method.ToString(),
+						absoluteUri.GetSanitizedUri(),
+						contentLength.ToString()
+					})
+				)));
+			}
 		}
 	}
 }
