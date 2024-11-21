@@ -74,7 +74,7 @@ namespace Trakit.Restful {
 						method = HttpMethod.Get;
 						if (request is IReqSingle single) {
 							route = objNames[0]
-								+ single.getKey()
+								+ single.GetKey()
 								+ string.Join("/", objNames.Skip(1));
 						}
 						break;
