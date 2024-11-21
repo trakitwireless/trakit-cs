@@ -60,8 +60,13 @@ namespace Trakit.Restful {
 			if (matches.Length > 1) {
 				switch (matches[0]) {
 					case "Self":
-						method = HttpMethod.Post;
-						route = (matches[0] + "/" + matches[1]).ToLowerInvariant();
+						if (matches[1] == "Details") {
+							method = HttpMethod.Get;
+							route = "self";
+						} else {
+							method = HttpMethod.Post;
+							route = (matches[0] + "/" + matches[1]).ToLowerInvariant();
+						}
 						return;
 					case "Subscription":
 						throw new NotImplementedException($"{matches[0]} only supported by TrakitSocketCommander");
@@ -123,23 +128,25 @@ namespace Trakit.Restful {
 		}
 		// internally handles sending requests and returns awaitable response from Trak-iT's RESTful API
 		HttpRequestMessage _command(HttpMethod method, string path, JObject body, out string route, out string content) {
-			var request = new HttpRequestMessage(method, path);
+			var request = new HttpRequestMessage() {
+				Method = method,
+			};
 			path = $"{this.BaseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
-			if (body != default) {
+			if (method == HttpMethod.Get || body == default) {
+				// no body, so add reqId to query-string
+				content = default;
+			} else {
 				// request has a body
 				request.Content = new StringContent(
 					content = this.Serializer.Serialize(body),
 					Encoding.UTF8,
 					"text/json"
 				);
-			} else {
-				// no body, so add reqId to query-string
-				content = default;
 			}
 			if ((_machine?.secret?.Length ?? 0) != 0) {
 				// use machine auth
 				request.RequestUri = new Uri(path);
-				Signatures.AddHmacHeader(request, _machine);
+				_machine.AuthorizeRequest(request);
 			} else if (_sessionId != default) {
 				// user session in query-string
 				request.RequestUri = new Uri(path + $"{(!path.Contains("?") ? "?" : "&")}ghostId={_sessionId}");

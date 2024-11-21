@@ -293,18 +293,12 @@ namespace Trakit.Socket {
 				if (_machine.secret?.Length > 0) {
 					this.Client.Options.SetRequestHeader(
 						"Authorization",
-						"HMAC256 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
-							_machine.key
-							+ ":"
-							+ Signatures.CreateHmacSignedInput(
-								_machine.key,
-								_machine.secret,
-								DateTime.UtcNow,
-								HttpMethod.Get,
-								endpoint.Uri,
-								0
-							)
-						))
+						"HMAC256 " + _machine.CreateHmacCreateSignature(
+							DateTime.UtcNow,
+							HttpMethod.Get,
+							endpoint.Uri,
+							0
+						)
 					);
 				} else {
 					endpoint.Query += $"&shadowKey={HttpUtility.UrlEncode(_machine.key)}";

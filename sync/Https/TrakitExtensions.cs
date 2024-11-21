@@ -81,17 +81,17 @@ namespace Trakit.Https {
 			long contentLength
 		) {
 			using (var hmac = new HMACSHA256(Convert.FromBase64String(machine.secret))) {
-				return Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(
+				return Convert.ToBase64String(Encoding.UTF8.GetBytes(
 					machine.key
 					+ ":"
-					+ string.Join("\n", new[] {
+					+ Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(string.Join("\n", new[] {
 						machine.key,
 						date.UtcDateTime.ToString("yyyyMMddHHmmss"),
 						method.ToString(),
 						absoluteUri.GetSanitizedUri(),
 						contentLength.ToString()
-					})
-				)));
+					}))))
+				));
 			}
 		}
 	}
