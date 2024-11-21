@@ -60,7 +60,7 @@ namespace Trakit.Restful {
 			if (matches.Length > 1) {
 				switch (matches[0]) {
 					case "Self":
-						if (matches[1] == "Details") {
+						if (matches[1] == "Get") {
 							method = HttpMethod.Get;
 							route = "self";
 						} else {

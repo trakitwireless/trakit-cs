@@ -369,7 +369,7 @@ namespace Trakit.Socket {
 							switch (msg.name) {
 								case "connectionResponse":
 									this.LastConnected = this.LastReceived;
-									this.Self = this.Serializer.Deserialize<RespSelfDetails>(msg.body);
+									this.Self = this.Serializer.Deserialize<RespSelfGet>(msg.body);
 									_onStatus(TrakitSocketStatus.Opened);
 									break;
 								case "sessionMachineMerged":
