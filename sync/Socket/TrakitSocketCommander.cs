@@ -113,11 +113,11 @@ namespace Trakit.Socket {
 		/// <summary>
 		/// 
 		/// </summary>
-		public  Dictionary<string,string> Query = new Dictionary<string,string>();
+		public Dictionary<string, string> Query = new Dictionary<string, string>();
 		/// <summary>
 		/// 
 		/// </summary>
-		public  Dictionary<string,string> Headers = new Dictionary<string,string>();
+		public Dictionary<string, string> Headers = new Dictionary<string, string>();
 
 		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitSocketCommander(Uri baseAddress) {
@@ -154,12 +154,14 @@ namespace Trakit.Socket {
 					switch (status) {
 						case TrakitSocketStatus.Opened:
 							_noop.Enabled = this.NoopKeepAlive.TotalMilliseconds > _noopDefault;
+							_reconDelay = _reconMin;
 							this.Connected?.Invoke(this);
 							break;
 						case TrakitSocketStatus.Closed:
 							_noop.Enabled = false;
 							if (this.ReconnectEnabled) _reconnecter = _reconnecter ?? Task.Run(_reconnecting, _reconSauce.Token);
 							if (!silent) this.Disconnected?.Invoke(this, message, reason);
+							_closeSource.Cancel();
 							break;
 					}
 				}
@@ -207,9 +209,9 @@ namespace Trakit.Socket {
 		/// </summary>
 		public event MessageHandler MessageReceived;
 		#endregion Events
-		#region Connection/Disconnection
+		#region Connection
 		// token source for managing connecting, and incoming/outgoing messaging
-		CancellationTokenSource _sauce;
+		CancellationTokenSource _openSource;
 		// an awaitable task which completes upon disconnection
 		Task _connecting() {
 			var source = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -219,81 +221,14 @@ namespace Trakit.Socket {
 					this.Status == TrakitSocketStatus.Opened
 					&& source.TrySetResult(this.Status)
 				) {
-					_sender = Task.Run(_sending, _sauce.Token);
+					_sender = Task.Run(_sending, _openSource.Token);
 				} else {
 					source.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
-			_receiver = Task.Run(_receiving, _sauce.Token);
+			_receiver = Task.Run(_receiving, _openSource.Token);
 			return source.Task;
-		}
-		// generic disconnect message
-		const string BYEBYE = "Goodbye!";
-		// flag for setting only one disconnect handler
-		object _shutlock = new { };
-		// the task handling the disconnect
-		Task _shutter;
-		// this is called when either the client or server (not the user) initiates a disconnection
-		void _shutdown(string closeMessage, WebSocketCloseStatus closeReason) {
-			lock (_shutlock) {
-				// it may be possible that this assignment happens twice, which is why the lock object is used.
-				_shutter = _shutter ?? Task.Run(() => _shutting(closeMessage, closeReason));
-			}
-		}
-		// handles the disconnect, disposes of resources, and awaits tasks doing send/receive
-		void _shutting(string closeMessage, WebSocketCloseStatus closeReason) {
-			var wss = this.Client;
-			_sauce.Cancel();
-			_outgoing.CompleteAdding();
-			try { _sender?.Wait(); } catch { }
-			try { _receiver?.Wait(); } catch { }
-			this.Client = default;
-			_outgoing.Dispose();
-			_outgoing = default;
-			_sauce.Dispose();
-			_sauce = default;
-			wss?.Abort();
-			wss?.Dispose();
-			_sender =
-			_receiver = default;
-
-			_onStatus(TrakitSocketStatus.Closed, closeMessage, closeReason);
-		}
-		// an awaitable task which completes upon disconnection
-		Task _disconnecting() {
-			var source = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
-			void handler(TrakitSocketCommander sender) {
-				// do nothing and return (do not unbind the handler)
-				// this is a normal part of the disconnection routine
-				if (this.Status == TrakitSocketStatus.Closing) return;
-
-				this.StatusChanged -= handler;
-				if (
-					this.Status != TrakitSocketStatus.Closed
-					|| !source.TrySetResult(this.Status)
-				) {
-					source.TrySetCanceled();
-				}
-			}
-			this.StatusChanged += handler;
-			return source.Task;
-		}
-		// minimum and maximum wait times (in milliseconds) before trying to reconnect
-		const int _reconMin = 1 * 1000,_reconMax = 5 * 60 * 1000;
-		// amount of time (in milliseconds) to wait before trying to reconnect
-		int _reconDelay = _reconMin;
-		//
-		CancellationTokenSource _reconSauce;
-		//
-		CancellationToken _reconToken;
-		// reset the wait timeout, then wait, then reconnect
-		// the task that waits, and then attempts to reconnect
-		Task _reconnecter;
-		async Task _reconnecting() {
-			_reconDelay = Math.Min(_reconDelay * 2, _reconMax);
-			await Task.Delay(_reconDelay, _reconSauce.Token);
-			await this.Connect(_reconToken);
 		}
 
 		/// <summary>
@@ -305,15 +240,17 @@ namespace Trakit.Socket {
 		public async Task Connect(CancellationToken ct = default) {
 			if (this.Status != TrakitSocketStatus.Closed) throw new InvalidOperationException($"Connection is {this.Status}.");
 
+			_closeSource?.Token.WaitHandle.WaitOne();
 			_reconToken = ct;
 			_closer = default;
 			_shutter = default;
 			_reconnecter = default;
-			_sauce = new CancellationTokenSource();
+			_closeSource = new CancellationTokenSource();
+			_openSource = new CancellationTokenSource();
 			_outgoing = new BlockingCollection<TrakitSocketMessage>();
 			this.Client = new ClientWebSocket();
 
-			var source = CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct);
+			var source = CancellationTokenSource.CreateLinkedTokenSource(_openSource.Token, ct);
 			var endpoint = new UriBuilder(this.BaseAddress);
 			if (this.Query?.Count() > 0) {
 				endpoint.Query += "&" + string.Join("&", this.Query.Select(p => HttpUtility.UrlEncode(p.Key) + "=" + HttpUtility.UrlEncode(p.Value)));
@@ -348,11 +285,63 @@ namespace Trakit.Socket {
 				await this.Client.ConnectAsync(endpoint.Uri, source.Token);
 				await _connecting().ConfigureAwait(false);
 			} catch {
-				_sauce.Cancel();
+				_openSource.Cancel();
 				_onStatus(TrakitSocketStatus.Closed, silent: true);
 				throw;
 			}
 		}
+		#endregion Connection
+		#region Disconnection
+		// generic disconnect message
+		const string BYEBYE = "Goodbye!";
+		// flag for setting only one disconnect handler
+		CancellationTokenSource _closeSource;
+		// the task handling the disconnect
+		Task _shutter;
+		// this is called when either the client or server (not the user) initiates a disconnection
+		void _shutdown(string message, WebSocketCloseStatus reason, bool silent) {
+			lock (_closeSource) {
+				// it may be possible that this assignment happens twice, which is why the lock object is used.
+				_shutter = _shutter ?? Task.Run(() => _shutting(message, reason, silent));
+			}
+		}
+		// handles the disconnect, disposes of resources, and awaits tasks doing send/receive
+		void _shutting(string message, WebSocketCloseStatus reason, bool silent) {
+			var wss = this.Client;
+			_openSource.Cancel();
+			_outgoing.CompleteAdding();
+			try { _sender?.Wait(); } catch { }
+			try { _receiver?.Wait(); } catch { }
+			this.Client = default;
+			_outgoing.Dispose();
+			_outgoing = default;
+			wss?.Abort();
+			wss?.Dispose();
+			_sender =
+			_receiver = default;
+
+			_onStatus(TrakitSocketStatus.Closed, message, reason, silent);
+		}
+		// an awaitable task which completes upon disconnection
+		Task _disconnecting() {
+			var source = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+			void handler(TrakitSocketCommander sender) {
+				// do nothing and return (do not unbind the handler)
+				// this is a normal part of the disconnection routine
+				if (this.Status == TrakitSocketStatus.Closing) return;
+
+				this.StatusChanged -= handler;
+				if (
+					this.Status != TrakitSocketStatus.Closed
+					|| !source.TrySetResult(this.Status)
+				) {
+					source.TrySetCanceled();
+				}
+			}
+			this.StatusChanged += handler;
+			return source.Task;
+		}
+
 		/// <summary>
 		/// Initiates a disconnection of the Trak-iT <see cref="WebSocket"/> service.
 		/// The disconnection will take place after all outbound messages are sent.
@@ -371,10 +360,29 @@ namespace Trakit.Socket {
 
 			var disconn = _disconnecting();
 			_closer = _closer ?? new TrakitSocketMessage(message, string.Empty, reason);
-			_outgoing.TryAdd(_closer, -1, _sauce.Token);
+			_outgoing.TryAdd(_closer, -1, _openSource.Token);
 			return disconn;
 		}
-		#endregion Connection/Disconnection
+		#endregion Disconnection
+		#region Reconnection
+		// minimum and maximum wait times (in milliseconds) before trying to reconnect
+		const int _reconMin = 1 * 1000,
+				_reconMax = 5 * 60 * 1000;
+		// amount of time (in milliseconds) to wait before trying to reconnect
+		int _reconDelay = _reconMin;
+		//
+		CancellationTokenSource _reconSauce;
+		//
+		CancellationToken _reconToken;
+		// the task that waits, and then attempts to reconnect
+		Task _reconnecter;
+		// reset the wait timeout, then wait, then reconnect
+		async Task _reconnecting() {
+			_reconDelay = Math.Min(_reconDelay * 2, _reconMax);
+			await Task.Delay(_reconDelay, _reconSauce.Token);
+			await this.Connect(_reconToken);
+		}
+		#endregion Reconnection
 		#region Messages - Receiving
 		// 1mb buffer for receiving; way more than enough
 		const int BUFFER = 1024 * 1024;
@@ -382,7 +390,8 @@ namespace Trakit.Socket {
 		Task _receiver;
 		// handles incoming messages and server initiated disconnections.
 		async Task _receiving() {
-			var ct = _sauce.Token;
+			bool wasOpen = false;
+			var ct = _openSource.Token;
 			string closeMessage = BYEBYE;
 			WebSocketCloseStatus closeReason = WebSocketCloseStatus.NormalClosure;
 			try {
@@ -404,8 +413,24 @@ namespace Trakit.Socket {
 								case "connectionResponse":
 									this.LastConnected = this.LastReceived;
 									this.Self = this.Serializer.Deserialize<RespSelfGet>(msg.body);
-									_reconDelay = _reconMin;
+									if (
+										(
+											_machine != default
+											&& this.Self.errorCode != ErrorCode.success
+										) || (
+											this.Self.errorCode != ErrorCode.success
+											&& this.Self.errorCode != ErrorCode.passwordExpired
+											&& this.Self.errorCode != ErrorCode.sessionExpired
+											&& this.Self.errorCode != ErrorCode.userNotLoggedIn
+										)
+									) {
+										throw new TrakitSocketException(
+											this.Self.message,
+											WebSocketCloseStatus.PolicyViolation
+										);
+									}
 									_onStatus(TrakitSocketStatus.Opened);
+									wasOpen = true;
 									break;
 								case "sessionMachineMerged":
 									this.Self.machine = this.Serializer.Deserialize<SelfMachine>(msg.body);
@@ -450,7 +475,7 @@ namespace Trakit.Socket {
 					ct
 				) ?? Task.CompletedTask);
 			}
-			_shutdown(closeMessage, closeReason);
+			_shutdown(closeMessage, closeReason, !wasOpen);
 		}
 		#endregion Messages - Receiving
 		#region Messages - Sending
@@ -462,7 +487,7 @@ namespace Trakit.Socket {
 		TrakitSocketMessage _closer;
 		// handles sending messages to the server, and initiating client requested disconnections
 		async Task _sending() {
-			var ct = _sauce.Token;
+			var ct = _openSource.Token;
 			string closeMessage = BYEBYE;
 			WebSocketCloseStatus closeReason = WebSocketCloseStatus.NormalClosure;
 			try {
@@ -520,7 +545,7 @@ namespace Trakit.Socket {
 					ct
 				);
 			}
-			_shutdown(closeMessage, closeReason);
+			_shutdown(closeMessage, closeReason, this.Status != TrakitSocketStatus.Closing);
 		}
 		// sends the client requested close message with the reason and goodbye message
 		Task _close(WebSocketCloseStatus reason, string message, CancellationToken ct) {
@@ -544,7 +569,7 @@ namespace Trakit.Socket {
 		TimeSpan _noopTimeout = TimeSpan.FromMilliseconds(_noopDefault);
 		// add outgoing message (don't use .Command because we don't need to await)
 		void _noopElapsed(object sender, ElapsedEventArgs e) {
-			if (!_outgoing.TryAdd(new TrakitSocketMessage("noop", $"{{\"reqId\":{++_reqId}}}"), -1, _sauce.Token)) {
+			if (!_outgoing.TryAdd(new TrakitSocketMessage("noop", $"{{\"reqId\":{++_reqId}}}"), -1, _openSource.Token)) {
 				_noop.Enabled = false;
 			}
 		}
@@ -640,7 +665,7 @@ namespace Trakit.Socket {
 			this.StatusChanged += handleDis;
 
 			// add to outgoing queue
-			var ct = _sauce.Token;
+			var ct = _openSource.Token;
 			return _outgoing.TryAdd(outbound, -1, ct)
 				? source.Task
 				: Task.FromCanceled<JObject>(ct);
