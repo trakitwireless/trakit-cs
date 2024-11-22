@@ -11,7 +11,6 @@ using System.Timers;
 using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
-using Trakit.Https;
 using Trakit.Https.Extensions;
 using Trakit.Objects;
 using Trakit.Tools;
@@ -95,6 +94,30 @@ namespace Trakit.Socket {
 				}
 			}
 		}
+		/// <summary>
+		/// 
+		/// </summary>
+		public bool ReconnectEnabled {
+			get => !(_reconSauce?.IsCancellationRequested ?? true);
+			set {
+				if (value != this.ReconnectEnabled) _reconSauce?.Cancel();
+				_reconSauce = value
+						? new CancellationTokenSource()
+						: default;
+			}
+		}
+		/// <summary>
+		/// 
+		/// </summary>
+		public TimeSpan ReconnectDelay => TimeSpan.FromMilliseconds(_reconDelay);
+		/// <summary>
+		/// 
+		/// </summary>
+		public  Dictionary<string,string> Query = new Dictionary<string,string>();
+		/// <summary>
+		/// 
+		/// </summary>
+		public  Dictionary<string,string> Headers = new Dictionary<string,string>();
 
 		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitSocketCommander(Uri baseAddress) {
@@ -135,6 +158,7 @@ namespace Trakit.Socket {
 							break;
 						case TrakitSocketStatus.Closed:
 							_noop.Enabled = false;
+							if (this.ReconnectEnabled) _reconnecter = _reconnecter ?? Task.Run(_reconnecting, _reconSauce.Token);
 							if (!silent) this.Disconnected?.Invoke(this, message, reason);
 							break;
 					}
@@ -255,37 +279,47 @@ namespace Trakit.Socket {
 			this.StatusChanged += handler;
 			return source.Task;
 		}
+		// minimum and maximum wait times (in milliseconds) before trying to reconnect
+		const int _reconMin = 1 * 1000,_reconMax = 5 * 60 * 1000;
+		// amount of time (in milliseconds) to wait before trying to reconnect
+		int _reconDelay = _reconMin;
+		//
+		CancellationTokenSource _reconSauce;
+		//
+		CancellationToken _reconToken;
+		// reset the wait timeout, then wait, then reconnect
+		// the task that waits, and then attempts to reconnect
+		Task _reconnecter;
+		async Task _reconnecting() {
+			_reconDelay = Math.Min(_reconDelay * 2, _reconMax);
+			await Task.Delay(_reconDelay, _reconSauce.Token);
+			await this.Connect(_reconToken);
+		}
 
 		/// <summary>
 		/// Initiates a new <see cref="WebSocket"/> connection.
 		/// </summary>
 		/// <param name="ct"></param>
-		/// <param name="query"></param>
-		/// <param name="headers"></param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
-		public async Task Connect(
-			CancellationToken? ct = default,
-			IDictionary<string, string> query = default,
-			IDictionary<string, string> headers = default
-		) {
+		public async Task Connect(CancellationToken ct = default) {
 			if (this.Status != TrakitSocketStatus.Closed) throw new InvalidOperationException($"Connection is {this.Status}.");
 
+			_reconToken = ct;
 			_closer = default;
 			_shutter = default;
+			_reconnecter = default;
 			_sauce = new CancellationTokenSource();
 			_outgoing = new BlockingCollection<TrakitSocketMessage>();
 			this.Client = new ClientWebSocket();
 
-			var source = ct.HasValue
-					? CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct.Value)
-					: _sauce;
+			var source = CancellationTokenSource.CreateLinkedTokenSource(_sauce.Token, ct);
 			var endpoint = new UriBuilder(this.BaseAddress);
-			if (query?.Count() > 0) {
-				endpoint.Query += "&" + string.Join("&", query.Select(p => HttpUtility.UrlEncode(p.Key) + "=" + HttpUtility.UrlEncode(p.Value)));
+			if (this.Query?.Count() > 0) {
+				endpoint.Query += "&" + string.Join("&", this.Query.Select(p => HttpUtility.UrlEncode(p.Key) + "=" + HttpUtility.UrlEncode(p.Value)));
 			}
-			if (headers?.Count() > 0) {
-				foreach (var pair in headers) {
+			if (this.Headers?.Count() > 0) {
+				foreach (var pair in this.Headers) {
 					this.Client.Options.SetRequestHeader(pair.Key, pair.Value);
 				}
 			}
@@ -314,7 +348,7 @@ namespace Trakit.Socket {
 				await this.Client.ConnectAsync(endpoint.Uri, source.Token);
 				await _connecting().ConfigureAwait(false);
 			} catch {
-				source.Cancel();
+				_sauce.Cancel();
 				_onStatus(TrakitSocketStatus.Closed, silent: true);
 				throw;
 			}
@@ -370,6 +404,7 @@ namespace Trakit.Socket {
 								case "connectionResponse":
 									this.LastConnected = this.LastReceived;
 									this.Self = this.Serializer.Deserialize<RespSelfGet>(msg.body);
+									_reconDelay = _reconMin;
 									_onStatus(TrakitSocketStatus.Opened);
 									break;
 								case "sessionMachineMerged":
