@@ -155,6 +155,7 @@ namespace Trakit.Socket {
 						case TrakitSocketStatus.Opened:
 							_noop.Enabled = this.NoopKeepAlive.TotalMilliseconds > _noopDefault;
 							_reconDelay = _reconMin;
+							this.LastConnected = this.LastReceived;
 							this.Connected?.Invoke(this);
 							break;
 						case TrakitSocketStatus.Closed:
@@ -411,7 +412,6 @@ namespace Trakit.Socket {
 							var msg = new TrakitSocketMessage(message);
 							switch (msg.name) {
 								case "connectionResponse":
-									this.LastConnected = this.LastReceived;
 									this.Self = this.Serializer.Deserialize<RespSelfGet>(msg.body);
 									if (
 										(
