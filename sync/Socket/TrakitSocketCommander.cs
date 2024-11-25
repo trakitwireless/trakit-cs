@@ -156,7 +156,7 @@ namespace Trakit.Socket {
 						case TrakitSocketStatus.Opened:
 							_wasOpen = true;
 							_reconDelay = _reconMin;
-							_noop.Enabled = this.NoopKeepAlive.TotalMilliseconds > _noopDefault;
+							_noop.Enabled = _noop.Interval > _noopDefault;
 							this.LastConnected = this.LastReceived;
 							this.Connected?.Invoke(this);
 							break;
@@ -603,6 +603,12 @@ namespace Trakit.Socket {
 							case "list":
 								return "getSubscriptionsList";
 						}
+						break;
+					case "Self":
+						if (cmdName == "get") return "getSessionDetails";
+						break;
+					case "Session":
+						if (cmdName == "delete") return "killSession";
 						break;
 				}
 				switch (cmdName) {
