@@ -707,7 +707,7 @@ namespace Trakit.Socket {
 		public Task<RespSubscription> Subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
 			=> this.Command<RespSubscription>(new ReqSubscriptionMerge() {
 				company = new ParamId() { id = company },
-				subscriptionTypes = subscriptions.ToArray()
+				subscriptionTypes = subscriptions.ToList()
 			});
 		/// <summary>
 		/// Unsubscribes the <see cref="Client"/> to receive notifications for merge/delete changes to objects.
@@ -718,7 +718,7 @@ namespace Trakit.Socket {
 		public Task<RespSubscription> Unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
 			=> this.Command<RespSubscription>(new ReqSubscriptionRemove() {
 				company = new ParamId() { id = company },
-				subscriptionTypes = subscriptions.ToArray()
+				subscriptionTypes = subscriptions.ToList()
 			});
 		/// <summary>
 		/// Gets the list of current subscriptions for the <see cref="Client"/>.
