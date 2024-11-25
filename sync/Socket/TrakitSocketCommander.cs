@@ -213,32 +213,31 @@ namespace Trakit.Socket {
 		public event MessageHandler MessageReceived;
 		#endregion Events
 		#region Connection
-		// is cancelled after a (dis)connection process is completed
-		CancellationTokenSource _connSauce;
+		// is completed (or cancelled) after a (dis)connection process is completed
+		TaskCompletionSource<TrakitSocketStatus> _connSauce;
 		// resets the connection process flag
 		void _resetConn() {
-			_connSauce?.Token.WaitHandle.WaitOne();
-			_connSauce = new CancellationTokenSource();
+			try { _connSauce?.Task.Wait(); } catch { }
+			_connSauce = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
 		}
 		// token source for managing connecting, and incoming/outgoing messaging
 		CancellationTokenSource _runSauce;
 		// an awaitable task which completes upon disconnection
 		Task _connecting() {
-			var source = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
 			void handler(TrakitSocketCommander sender) {
 				this.StatusChanged -= handler;
 				if (
 					this.Status == TrakitSocketStatus.Opened
-					&& source.TrySetResult(this.Status)
+					&& _connSauce.TrySetResult(this.Status)
 				) {
 					_sender = Task.Run(_sending, _runSauce.Token);
 				} else {
-					source.TrySetCanceled();
+					_connSauce.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
 			_receiver = Task.Run(_receiving, _runSauce.Token);
-			return source.Task;
+			return _connSauce.Task;
 		}
 
 		/// <summary>
@@ -293,10 +292,10 @@ namespace Trakit.Socket {
 				_onStatus(TrakitSocketStatus.Opening);
 				await this.Client.ConnectAsync(endpoint.Uri, source.Token);
 				await _connecting().ConfigureAwait(false);
-			} catch {
+			} catch (Exception ex) {
 				_runSauce.Cancel();
 				_onStatus(TrakitSocketStatus.Closed);
-				_connSauce.Cancel();
+				_connSauce.TrySetException(ex);
 				throw;
 			}
 		}
@@ -310,7 +309,7 @@ namespace Trakit.Socket {
 		void _shutdown(string message, WebSocketCloseStatus reason) {
 			lock (this) {
 				// it may be possible that this assignment happens twice, which is why the lock object is used.
-				_shutter = _shutter ?? Task.Run(() => _shutting(message, reason), _connSauce.Token);
+				_shutter = _shutter ?? Task.Run(() => _shutting(message, reason));
 			}
 		}
 		// handles the disconnect, disposes of resources, and awaits tasks doing send/receive
@@ -329,11 +328,10 @@ namespace Trakit.Socket {
 			_receiver = default;
 
 			_onStatus(TrakitSocketStatus.Closed, message, reason);
-			_connSauce.Cancel();
+			_connSauce.TrySetResult(this.Status);
 		}
 		// an awaitable task which completes upon disconnection
 		Task _disconnecting() {
-			var source = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
 			void handler(TrakitSocketCommander sender) {
 				// do nothing and return (do not unbind the handler)
 				// this is a normal part of the disconnection routine
@@ -342,13 +340,13 @@ namespace Trakit.Socket {
 				this.StatusChanged -= handler;
 				if (
 					this.Status != TrakitSocketStatus.Closed
-					|| !source.TrySetResult(this.Status)
+					|| !_connSauce.TrySetResult(this.Status)
 				) {
-					source.TrySetCanceled();
+					_connSauce.TrySetCanceled();
 				}
 			}
 			this.StatusChanged += handler;
-			return source.Task;
+			return _connSauce.Task;
 		}
 
 		/// <summary>
@@ -368,10 +366,10 @@ namespace Trakit.Socket {
 			if (this.Status != TrakitSocketStatus.Opened) throw new InvalidOperationException($"Connection is {this.Status}.");
 			_resetConn();
 
-			var disconn = _disconnecting();
+			var disco = _disconnecting();
 			_closer = _closer ?? new TrakitSocketMessage(message, string.Empty, reason);
 			_outgoing.TryAdd(_closer, -1, _runSauce.Token);
-			return disconn;
+			return disco;
 		}
 		#endregion Disconnection
 		#region Reconnection
@@ -440,8 +438,6 @@ namespace Trakit.Socket {
 										);
 									}
 									_onStatus(TrakitSocketStatus.Opened);
-									_connSauce.Cancel();
-									_connSauce = new CancellationTokenSource();
 									break;
 								case "sessionMachineMerged":
 									this.Self.machine = this.Serializer.Deserialize<SelfMachine>(msg.body);
