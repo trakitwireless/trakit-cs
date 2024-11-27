@@ -584,8 +584,9 @@ namespace Trakit.Socket {
 		#region Commands
 		/// used to correlate requests and responses. <seealso cref="Request.reqId"/>
 		int _reqId;
-		/// command name reply suffix
-		const string RESPONSE_SUFFIX = "Response";
+		/// command name reply suffix and unknown command response name
+		const string RESPONSE_SUFFIX = "Response",
+					UNKNOWN_COMMAND = "unknownCommand" + RESPONSE_SUFFIX;
 		/// converts the <see cref="Request"/> type into a WebSocket command name
 		static string _getCommandName<TRequest>(TRequest request) where TRequest : Request {
 			var matches = request.GetNameParts();
@@ -654,17 +655,24 @@ namespace Trakit.Socket {
 
 			var source = new TaskCompletionSource<JObject>(TaskCreationOptions.RunContinuationsAsynchronously);
 			void handleMsg(TrakitSocketCommander sender, TrakitSocketMessage received) {
-				if (received.name == outbound.name + RESPONSE_SUFFIX) {
-					var response = this.Serializer.Deserialize<JObject>(received.body);
-					if (
-						int.TryParse(response["reqId"]?.ToString(), out int reqId)
-						&& reqId == (int)parameters["reqId"]
-					) {
-						this.MessageReceived -= handleMsg;
-						this.StatusChanged -= handleDis;
-						if (!source.TrySetResult(response)) {
-							source.TrySetCanceled();
+				if (
+					received.name == outbound.name + RESPONSE_SUFFIX
+					|| received.name == UNKNOWN_COMMAND
+				) {
+					try {
+						var response = this.Serializer.Deserialize<JObject>(received.body);
+						if (
+							int.TryParse(response["reqId"]?.ToString(), out int reqId)
+							&& reqId == (int)parameters["reqId"]
+						) {
+							this.MessageReceived -= handleMsg;
+							this.StatusChanged -= handleDis;
+							if (!source.TrySetResult(response)) {
+								source.TrySetCanceled();
+							}
 						}
+					} catch (Exception ex) {
+						source.TrySetException(ex);
 					}
 				}
 			}
