@@ -11,6 +11,9 @@
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<Version>0.3.0.0</Version>
+		<PackageIcon>it_128.png</PackageIcon>
+		<Copyright>2024 Traki-iT Wireless Inc.</Copyright>
+		<Authors>Trak-it Wireless Inc.</Authors>
 	</PropertyGroup>
 	<ItemGroup>
 		<None Include="..\..\trakit-dotnet\it_128.png">
