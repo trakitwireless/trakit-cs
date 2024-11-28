@@ -4,11 +4,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Net.WebSockets;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
 using Trakit.Https.Extensions;
@@ -110,14 +110,6 @@ namespace Trakit.Socket {
 		/// Amount of time to wait after disconnection to automatically re-establish the connection.
 		/// </summary>
 		public TimeSpan ReconnectDelay => TimeSpan.FromMilliseconds(_reconDelay);
-		/// <summary>
-		/// Additional (optional) values added to the query-string of the connection request.
-		/// </summary>
-		public Dictionary<string, string> Query = new Dictionary<string, string>();
-		/// <summary>
-		/// Additional (optional) HTTP headers added to the connection request.
-		/// </summary>
-		public Dictionary<string, string> Headers = new Dictionary<string, string>();
 
 		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
 		public TrakitSocketCommander(Uri baseAddress) {
@@ -125,7 +117,6 @@ namespace Trakit.Socket {
 			this.Client = new ClientWebSocket();
 			_noop.Elapsed += _noopElapsed;
 		}
-
 		/// <summary>
 		/// Disposes of the status setting task.
 		/// </summary>
@@ -259,38 +250,28 @@ namespace Trakit.Socket {
 			this.Client = new ClientWebSocket();
 
 			var source = CancellationTokenSource.CreateLinkedTokenSource(_runSauce.Token, ct);
-			var endpoint = new UriBuilder(this.BaseAddress);
-			if (this.Query?.Count() > 0) {
-				endpoint.Query += "&" + string.Join("&", this.Query.Select(p => HttpUtility.UrlEncode(p.Key) + "=" + HttpUtility.UrlEncode(p.Value)));
+			var uri = this.CreateBaseUri().Uri;
+			// add headers
+			foreach (var pair in this.Headers) {
+				this.Client.Options.SetRequestHeader(pair.Key, pair.Value);
 			}
-			if (this.Headers?.Count() > 0) {
-				foreach (var pair in this.Headers) {
-					this.Client.Options.SetRequestHeader(pair.Key, pair.Value);
-				}
-			}
+			// add machine
 			if (_machine != default) {
-				if (_machine.secret?.Length > 0) {
-					this.Client.Options.SetRequestHeader(
-						"Authorization",
-						"HMAC256 " + _machine.CreateHmacCreateSignature(
+				this.Client.Options.SetRequestHeader(
+					"Authorization",
+					_machine.secret?.Length > 0
+						? "HMAC256 " + _machine.CreateHmacCreateSignature(
 							DateTime.UtcNow,
 							HttpMethod.Get,
-							endpoint.Uri,
+							uri,
 							0
 						)
-					);
-				} else {
-					endpoint.Query += $"&shadowKey={HttpUtility.UrlEncode(_machine.key)}";
-				}
-			} else if (_sessionId != default) {
-				endpoint.Query += $"&ghostId={_sessionId}";
-			}
-			if (endpoint.Query.Length > 1 && endpoint.Query[1] == '&') {
-				endpoint.Query = endpoint.Query.Substring(2);
+						: $"Machine " + Convert.ToBase64String(Encoding.UTF8.GetBytes(_machine.key))
+				);
 			}
 			try {
 				_onStatus(TrakitSocketStatus.Opening);
-				await this.Client.ConnectAsync(endpoint.Uri, source.Token);
+				await this.Client.ConnectAsync(uri, source.Token);
 				await _connecting().ConfigureAwait(false);
 			} catch (Exception ex) {
 				_runSauce.Cancel();

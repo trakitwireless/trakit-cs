@@ -16,10 +16,6 @@ namespace Trakit.Https.Extensions {
 		/// Common name for session ID used by all systems.
 		/// </summary>
 		public const string SESSION_ID = "ghostId";
-		/// <summary>
-		/// Common name for authorization token used by all systems.
-		/// </summary>
-		public const string MACHINE_KEY = "shadowKey";
 
 		/// <summary>
 		/// Returns the URI with the session/machine keys removed from the <see cref="Uri.Query"/>.
@@ -33,7 +29,7 @@ namespace Trakit.Https.Extensions {
 					"&",
 					uri.Query.Substring(1)
 							.Split('&')
-							.Select(s => s.StartsWith(SESSION_ID + "=") || s.StartsWith(MACHINE_KEY + "=") ? "" : s)
+							.Select(s => s.StartsWith(SESSION_ID + "=") ? "" : s)
 							.Where(s => s != "")
 				);
 			}
@@ -52,15 +48,20 @@ namespace Trakit.Https.Extensions {
 			request.Headers.Date = date
 							?? request.Headers.Date
 							?? DateTimeOffset.UtcNow;
-			request.Headers.Authorization = new AuthenticationHeaderValue(
-				"HMAC256",
-				machine.CreateHmacCreateSignature(
-					request.Headers.Date.Value,
-					request.Method,
-					request.RequestUri,
-					request.Content?.Headers?.ContentLength ?? 0
+			request.Headers.Authorization = machine.secret?.Length > 0
+				? new AuthenticationHeaderValue(
+					"HMAC256",
+					machine.CreateHmacCreateSignature(
+						request.Headers.Date.Value,
+						request.Method,
+						request.RequestUri,
+						request.Content?.Headers?.ContentLength ?? 0
+					)
 				)
-			);
+				: new AuthenticationHeaderValue(
+					"Machine",
+					Convert.ToBase64String(Encoding.UTF8.GetBytes(machine.key))
+				);
 		}
 		/// <summary>
 		/// Creates an HMAC256 signed input for use in <see cref="HttpRequestHeaders"/>s and <see cref="ClientWebSocketOptions"/>.

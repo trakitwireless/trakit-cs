@@ -131,26 +131,23 @@ namespace Trakit.Restful {
 		HttpRequestMessage _command(HttpMethod method, string path, JObject body, out string route, out string content) {
 			var request = new HttpRequestMessage() {
 				Method = method,
+				RequestUri = this.CreateBaseUri(path).Uri,
 			};
-			path = $"{this.BaseAddress.ToString().TrimEnd('/')}/{path.TrimStart('/')}";
 			if (method == HttpMethod.Get || body == default) {
 				// no body, so add reqId to query-string
 				content = default;
 			} else {
 				// request has a body
-				request.Content = new StringContent(
-					content = this.Serializer.Serialize(body),
-					Encoding.UTF8,
-					"text/json"
-				);
+				content = this.Serializer.Serialize(body);
+				request.Content = new StringContent(content, Encoding.UTF8, "text/json");
 			}
-			if ((_machine?.secret?.Length ?? 0) != 0) {
-				// use machine auth
-				request.RequestUri = new Uri(path);
+			// add headers
+			foreach (var pair in this.Headers) {
+				request.Headers.Add(pair.Key, pair.Value);
+			}    
+			// add machine
+						if (_machine != default) {
 				_machine.AuthorizeRequest(request);
-			} else if (_sessionId != default) {
-				// user session in query-string
-				request.RequestUri = new Uri(path + $"{(!path.Contains("?") ? "?" : "&")}ghostId={_sessionId}");
 			}
 			route = request.RequestUri.ToString();
 			return request;
