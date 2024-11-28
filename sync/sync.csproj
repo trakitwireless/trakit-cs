@@ -6,13 +6,17 @@
 		<Title>Trak-iT API Synchronization</Title>
 		<PackageProjectUrl>https://apis.trakit.ca/dotnet</PackageProjectUrl>
 		<AssemblyName>Trakit.$(MSBuildProjectName)</AssemblyName>
-		<AssemblyVersion>0.2.0.12</AssemblyVersion>
-		<FileVersion>0.2.0.12</FileVersion>
+		<AssemblyVersion>0.3.0.0</AssemblyVersion>
+		<FileVersion>0.3.0.0</FileVersion>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
-		<Version>0.2.0.12</Version>
+		<Version>0.3.0.0</Version>
 	</PropertyGroup>
 	<ItemGroup>
+		<None Include="..\..\trakit-dotnet\it_128.png">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
 		<None Include="..\LICENSE">
 			<Pack>True</Pack>
 			<PackagePath>\</PackagePath>
