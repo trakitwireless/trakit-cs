@@ -409,6 +409,20 @@ namespace Trakit.Sync {
 				return subscriptions;
 			}
 			/// <summary>
+			/// Returns a list of subscription types that are not set to expire.
+			/// </summary>
+			/// <returns></returns>
+			internal List<SubscriptionType> GetActiveSubscriptions() {
+				var subscriptions = new List<SubscriptionType>();
+				foreach (var pair in this.Subscriptions) {
+					if (!pair.Value.HasValue) {
+						subscriptions.Add(pair.Key);
+					}
+				}
+				return subscriptions;
+			}
+
+			/// <summary>
 			/// Sets the given expiry date for the given subscription type.
 			/// </summary>
 			/// <param name="subscription"></param>
@@ -481,7 +495,6 @@ namespace Trakit.Sync {
 		/// </summary>
 		ConcurrentDictionary<ulong, ActiveSubscriptions> __currentSubscriptions = new ConcurrentDictionary<ulong, ActiveSubscriptions>();
 
-
 		/// <summary>
 		/// 
 		/// </summary>
@@ -489,20 +502,35 @@ namespace Trakit.Sync {
 		/// <param name="objectTypes"></param>
 		/// <returns></returns>
 		public async Task<SubscriptionType[]> Sync(ulong companyId, IEnumerable<Type> objectTypes) {
-
-
-
+			var subscriptions = objectTypes.SelectMany(GetSubscriptionsByType).ToList();
 
 			if (this.socket.Status != TrakitSocketStatus.Opened) {
 				await this.socket.Connect();
 			}
-			var subscribed = this.__currentSubscriptions.GetOrAdd(companyId, (k) => new ActiveSubscriptions());
+			var active = this.__currentSubscriptions.GetOrAdd(companyId, (k) => new ActiveSubscriptions());
+			foreach (var subscription in active.GetActiveSubscriptions()) {
+				subscriptions.Remove(subscription);
+			}
+			await Task.WhenAll(subscriptions.Select(async s => {
+				this.socket.MessageReceived += (o, m) => { };
 
+				Request request = null;// make this somehow
+				Response response = await this.socket.Command<Response>(request);
+				if (response.errorCode != ErrorCode.success) {
+					//throw new CommandError(response);
+				}
+				request = null;// now make it for REST
+				response = await this.rest.Command<Response>(request);
+				if (response.errorCode != ErrorCode.success) {
+					//throw new CommandError(response);
+				}
 
+				// add all response content to storage
 
+				active.RemoveExpiry(s);
+			}).ToArray());
 
-
-			return default;
+			return subscriptions.ToArray();
 		}
 	}
 }
