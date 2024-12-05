@@ -16,23 +16,25 @@ namespace Trakit.Sync {
 		/// <summary>
 		/// Returns the appropriate <see cref="SubscriptionType"/>s for the given object.
 		/// </summary>
-		/// <typeparam name="T">An <see cref="IRequestable"/> resource that can be synchronized by a client.</typeparam>
-		/// <param name="cacheable">The instance of an <see cref="IRequestable"/> object.</param>
+		/// <typeparam name="TRequestable">An <see cref="IRequestable"/> resource that can be synchronized by a client.</typeparam>
+		/// <param name="requestable">The instance of an <see cref="IRequestable"/> object.</param>
 		/// <returns>An array of <see cref="SubscriptionType"/>s (usually only one item) to keep the given <see cref="IRequestable"/> in-sync.</returns>
-		/// <exception cref="InvalidOperationException">When <typeparamref name="T"/> does not implement <see cref="IRequestable"/>.</exception>
-		/// <exception cref="KeyNotFoundException">When <typeparamref name="T"/> is not capable of being synchronized.</exception>
-		public static SubscriptionType[] GetSubscriptionsByObject<T>(T cacheable = default) where T : IRequestable
-			=> GetSubscriptionsByType(cacheable?.GetType() ?? typeof(T));
+		/// <exception cref="InvalidOperationException">When <typeparamref name="TRequestable"/> does not implement <see cref="IRequestable"/>.</exception>
+		/// <exception cref="KeyNotFoundException">When <typeparamref name="TRequestable"/> is not capable of being synchronized.</exception>
+		public static SubscriptionType[] GetSubscriptionsByObject<TRequestable>(
+			TRequestable requestable = default
+		) where TRequestable : IRequestable
+			=> GetSubscriptionsByType(requestable?.GetType() ?? typeof(TRequestable));
 		/// <summary>
 		/// Returns the appropriate <see cref="SubscriptionType"/>s for the given type.
 		/// </summary>
 		/// <param name="type">The type of <see cref="IRequestable"/>.</param>
 		/// <returns>An array of <see cref="SubscriptionType"/>s (usually only one item) to keep the given <see cref="IRequestable"/> in-sync.</returns>
-		/// <exception cref="ArgumentNullException">When <paramref name="type"/> is <c>null</c>.</exception>
+		/// <exception cref="ArgumentNullException">When <paramref name="type"/> is <see langword="null"/>.</exception>
 		/// <exception cref="InvalidOperationException">When <paramref name="type"/> does not implement <see cref="IRequestable"/>.</exception>
 		/// <exception cref="KeyNotFoundException">When <paramref name="type"/> is not capable of being synchronized.</exception>
 		public static SubscriptionType[] GetSubscriptionsByType(Type type) {
-			if (type == null) {
+			if (type == default) {
 				throw new ArgumentNullException(nameof(type), $"{nameof(type)} cannot be null");
 			}
 			if (!typeof(IRequestable).IsAssignableFrom(type)) {
@@ -40,7 +42,8 @@ namespace Trakit.Sync {
 			}
 			switch (type.FullName.Split('.').Last()) {
 				#region Company
-				case "Company":     /// <seealso cref="Company"/>
+				/// <seealso cref="Company"/>
+				case "Company":
 					return new[] {
 						SubscriptionType.companyGeneral,
 						SubscriptionType.companyLabels,
@@ -48,240 +51,298 @@ namespace Trakit.Sync {
 						SubscriptionType.companyGeneral,
 						SubscriptionType.companyReseller,
 					};
-				case "CompanyGeneral":   /// <seealso cref="CompanyGeneral"/>
+				/// <seealso cref="CompanyGeneral"/>
+				case "CompanyGeneral":
 					return new[] {
 						SubscriptionType.companyGeneral,
 					};
-				case "CompanyDirectory": /// <seealso cref="CompanyDirectory"/>
+				/// <seealso cref="CompanyDirectory"/>
+				case "CompanyDirectory":
 					break;    // not yet implemented
-				case "CompanyStyles":    /// <seealso cref="CompanyStyles"/>
+				/// <seealso cref="CompanyStyles"/>
+				case "CompanyStyles":
 					return new[] {
 						SubscriptionType.companyLabels,
 					};
-				case "CompanyPolicies":  /// <seealso cref="CompanyPolicies"/>
+				/// <seealso cref="CompanyPolicies"/>
+				case "CompanyPolicies":
 					return new[] {
 						SubscriptionType.companyPolicies,
 					};
-				case "CompanyReseller":  /// <seealso cref="CompanyReseller"/>
+				/// <seealso cref="CompanyReseller"/>
+				case "CompanyReseller":
 					return new[] {
 						SubscriptionType.companyReseller,
 					};
 				#endregion Company
 
-				case "Contact":     /// <seealso cref="Contact"/>
+				#region Contacts
+				/// <seealso cref="Contact"/>
+				case "Contact":
 					return new[] {
 						SubscriptionType.contact,
 					};
+				#endregion Contacts
 
 				#region Billing
-				case "BillingProfile":   /// <seealso cref="BillingProfile"/>
+				/// <seealso cref="BillingProfile"/>
+				case "BillingProfile":
 					return new[] {
 						SubscriptionType.billingProfile,
 					};
-				case "BillableHostingRule":   /// <seealso cref="BillableHostingRule"/>
+				/// <seealso cref="BillableHostingRule"/>
+				case "BillableHostingRule":
 					return new[] {
 						SubscriptionType.billingHosting,
 					};
-				case "BillableHostingLicense":     /// <seealso cref="BillableHostingLicense"/>
+				/// <seealso cref="BillableHostingLicense"/>
+				case "BillableHostingLicense":
 					return new[] {
 						SubscriptionType.billingLicense,
 					};
-				case "BillingReport":    /// <seealso cref="BillingReport"/>
+				/// <seealso cref="BillingReport"/>
+				case "BillingReport":
 					return new[] {
 						SubscriptionType.billingReport,
 					};
 				#endregion Billing
 
 				#region Behaviours
-				case "Behaviour":   /// <seealso cref="Behaviour"/>
+				/// <seealso cref="Behaviour"/>
+				case "Behaviour":
 					return new[] {
 						SubscriptionType.behaviour,
 					};
-				case "BehaviourScript":  /// <seealso cref="BehaviourScript"/>
+				/// <seealso cref="BehaviourScript"/>
+				case "BehaviourScript":
 					return new[] {
 						SubscriptionType.behaviourScript,
 					};
-				case "BehaviourLog":     /// <seealso cref="BehaviourLog"/>
+				/// <seealso cref="BehaviourLog"/>
+				case "BehaviourLog":
 					return new[] {
 						SubscriptionType.behaviourLog,
 					};
 				#endregion Behaviours
 
 				#region Assets
-				case "Person": /// <seealso cref="Person"/>
-				case "Vehicle":     /// <seealso cref="Vehicle"/>
-				case "Trailer":     /// <seealso cref="Trailer"/>
-				case "Asset":  /// <seealso cref="Asset"/>
+				/// <seealso cref="Person"/>
+				/// <seealso cref="Vehicle"/>
+				/// <seealso cref="Trailer"/>
+				/// <seealso cref="Asset"/>
+				case "Person":
+				case "Vehicle":
+				case "Trailer":
+				case "Asset":
 					return new[] {
 						SubscriptionType.assetGeneral,
 						SubscriptionType.assetAdvanced,
 						SubscriptionType.assetDispatch,
 					};
-				case "PersonGeneral":    /// <seealso cref="PersonGeneral"/>
-				case "VehicleGeneral":   /// <seealso cref="VehicleGeneral"/>
-				case "TrailerGeneral":   /// <seealso cref="TrailerGeneral"/>
-				case "AssetGeneral":     /// <seealso cref="AssetGeneral"/>
+				/// <seealso cref="PersonGeneral"/>
+				/// <seealso cref="VehicleGeneral"/>
+				/// <seealso cref="TrailerGeneral"/>
+				/// <seealso cref="AssetGeneral"/>
+				case "PersonGeneral":
+				case "VehicleGeneral":
+				case "TrailerGeneral":
+				case "AssetGeneral":
 					return new[] {
 						SubscriptionType.assetGeneral,
 					};
-				case "AssetAdvanced":    /// <seealso cref="AssetAdvanced"/>
-				case "VehicleAdvanced":  /// <seealso cref="VehicleAdvanced"/>
+				/// <seealso cref="AssetAdvanced"/>
+				/// <seealso cref="VehicleAdvanced"/>
+				case "AssetAdvanced":
+				case "VehicleAdvanced":
 					return new[] {
 						SubscriptionType.assetAdvanced,
 					};
-				case "AssetDispatch":    /// <seealso cref="AssetDispatch"/>
+				/// <seealso cref="AssetDispatch"/>
+				case "AssetDispatch":
 					return new[] {
 						SubscriptionType.assetDispatch,
 					};
 				#endregion Assets
 
 				#region Dispatch
-				case "DispatchTask":     /// <seealso cref="DispatchTask"/>
+				/// <seealso cref="DispatchTask"/>
+				case "DispatchTask":
 					return new[] {
 						SubscriptionType.dispatchTask,
 					};
-				case "DispatchJob": /// <seealso cref="DispatchJob"/>
+				/// <seealso cref="DispatchJob"/>
+				case "DispatchJob":
 					return new[] {
 						SubscriptionType.dispatchJob,
 					};
 				#endregion Dispatch
 
 				#region Reports
-				case "ReportTemplate":   /// <seealso cref="ReportTemplate"/>
+				/// <seealso cref="ReportTemplate"/>
+				case "ReportTemplate":
 					return new[] {
 						SubscriptionType.reportTemplate,
 					};
-				case "ReportSchedule":   /// <seealso cref="ReportSchedule"/>
+				/// <seealso cref="ReportSchedule"/>
+				case "ReportSchedule":
 					return new[] {
 						SubscriptionType.reportSchedule,
 					};
-				case "ReportResult":     /// <seealso cref="ReportResult"/>
+				/// <seealso cref="ReportResult"/>
+				case "ReportResult":
 					return new[] {
 						SubscriptionType.reportResult,
 					};
 				#endregion Reports
 
 				#region Places
-				case "Place":  /// <seealso cref="Place"/>
-				case "PlaceGeneral":     /// <seealso cref="PlaceGeneral"/>
+				/// <seealso cref="Place"/>
+				case "Place":
 					return new[] {
 						SubscriptionType.placeGeneral,
 					};
 				#endregion Places
 
 				#region Images and Files
-				case "Icon":   /// <seealso cref="Icon"/>
+				/// <seealso cref="Icon"/>
+				case "Icon":
 					return new[] {
 						SubscriptionType.icon,
 					};
-				case "Picture":     /// <seealso cref="Picture"/>
+				/// <seealso cref="Picture"/>
+				case "Picture":
 					return new[] {
 						SubscriptionType.picture,
 					};
-				case "Document":    /// <seealso cref="Document"/>
+				/// <seealso cref="Document"/>
+				case "Document":
 					return new[] {
 						SubscriptionType.document,
 					};
-				case "FormTemplate":     /// <seealso cref="FormTemplate"/>
+				/// <seealso cref="FormTemplate"/>
+				case "FormTemplate":
 					return new[] {
 						SubscriptionType.formTemplate,
 					};
-				case "FormResult":  /// <seealso cref="FormResult"/>
+				/// <seealso cref="FormResult"/>
+				case "FormResult":
 					return new[] {
 						SubscriptionType.formResult,
 					};
-				case "DashcamData": /// <seealso cref="DashcamData"/>
+				/// <seealso cref="Dashcam"/>
+				case "Dashcam":
+				/// <seealso cref="DashcamLive"/>
+				case "DashcamLive":
 					break;// these can't be kept in sync
 				#endregion Images and Files
 
 				#region Maintenance
-				case "MaintenanceJob":   /// <seealso cref="MaintenanceJob"/>
+				/// <seealso cref="MaintenanceJob"/>
+				case "MaintenanceJob":
 					return new[] {
 						SubscriptionType.maintenanceJob,
 					};
-				case "MaintenanceSchedule":   /// <seealso cref="MaintenanceSchedule"/>
+				/// <seealso cref="MaintenanceSchedule"/>
+				case "MaintenanceSchedule":
 					return new[] {
 						SubscriptionType.maintenanceSchedule,
 					};
 				#endregion Maintenance
 
 				#region Providers and Configs
-				case "Provider":    /// <seealso cref="Provider"/>
+				/// <seealso cref="Provider"/>
+				case "Provider":
 					return new[] {
 						SubscriptionType.providerGeneral,
 						SubscriptionType.providerAdvanced,
 						SubscriptionType.providerControl,
 					};
-				case "ProviderGeneral":  /// <seealso cref="ProviderGeneral"/>
+				/// <seealso cref="ProviderGeneral"/>
+				case "ProviderGeneral":
 					return new[] {
 						SubscriptionType.providerGeneral,
 					};
-				case "ProviderAdvanced": /// <seealso cref="ProviderAdvanced"/>
+				/// <seealso cref="ProviderAdvanced"/>
+				case "ProviderAdvanced":
 					return new[] {
 						SubscriptionType.providerAdvanced,
 					};
-				case "ProviderControl":  /// <seealso cref="ProviderControl"/>
+				/// <seealso cref="ProviderControl"/>
+				case "ProviderControl":
 					return new[] {
 						SubscriptionType.providerControl,
 					};
-				case "ProviderRegistration":  /// <seealso cref="ProviderRegistration"/>
+				/// <seealso cref="ProviderRegistration"/>
+				case "ProviderRegistration":
 					return new[] {
 						SubscriptionType.providerRegistration,
 					};
 
-				case "ProviderScript":   /// <seealso cref="ProviderScript"/>
+				/// <seealso cref="ProviderScript"/>
+				case "ProviderScript":
 					return new[] {
 						SubscriptionType.providerScript,
 					};
-				case "ProviderConfig":   /// <seealso cref="ProviderConfig"/>
+				/// <seealso cref="ProviderConfig"/>
+				case "ProviderConfig":
 					return new[] {
 						SubscriptionType.providerConfig,
 					};
-				case "ProviderConfigurationType":  /// <seealso cref="ProviderConfigurationType"/>
+				/// <seealso cref="ProviderConfigurationType"/>
+				case "ProviderConfigurationType":
 					break;    // static data, does not need sync
-				case "ProviderConfiguration": /// <seealso cref="ProviderConfiguration"/>
+				/// <seealso cref="ProviderConfiguration"/>
+				case "ProviderConfiguration":
 					return new[] {
 						SubscriptionType.providerConfiguration,
 					};
 				#endregion Providers and Configs
 
-				case "AssetAlert":  /// <seealso cref="AssetAlert"/>
-					break;	// these are always sent to connected clients
-				case "AssetMessage":     /// <seealso cref="AssetMessage"/>
+				#region Messaging
+				/// <seealso cref="AssetAlert"/>
+				case "AssetAlert":
+					break;    // these are always sent to connected clients
+				/// <seealso cref="AssetMessage"/>
+				case "AssetMessage":
 					return new[] {
 						SubscriptionType.assetMessage,
 					};
+				#endregion Messaging
 
 				#region Users and Groups
-				case "User":   /// <seealso cref="User"/>
+				/// <seealso cref="User"/>
+				case "User":
 					return new[] {
 						SubscriptionType.userGeneral,
 						SubscriptionType.userAdvanced,
 					};
-				case "UserGeneral": /// <seealso cref="UserGeneral"/>
+				/// <seealso cref="UserGeneral"/>
+				case "UserGeneral":
 					return new[] {
 						SubscriptionType.userGeneral,
 					};
-				case "UserAdvanced":     /// <seealso cref="UserAdvanced"/>
+				/// <seealso cref="UserAdvanced"/>
+				case "UserAdvanced":
 					return new[] {
 						SubscriptionType.userAdvanced,
 					};
-				case "UserGroup":   /// <seealso cref="UserGroup"/>
+				/// <seealso cref="UserGroup"/>
+				case "UserGroup":
 					return new[] {
 						SubscriptionType.userGroup,
 					};
-				case "Machine":     /// <seealso cref="Machine"/>
+				/// <seealso cref="Machine"/>
+				case "Machine":
 					return new[] {
 						SubscriptionType.machine,
 					};
-				#endregion Users and Groups
-
-				case "Session":     /// <seealso cref="Session"/>
+				/// <seealso cref="Session"/>
+				case "Session":
 					break;// these can't be kept in sync
+					#endregion Users and Groups
 			}
 			throw new KeyNotFoundException($"{type.FullName} cannot be kept in-sync");
 		}
-
 
 		/// <summary>
 		/// 
