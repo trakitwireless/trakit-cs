@@ -356,5 +356,153 @@ namespace Trakit.Sync {
 		/// 
 		/// </summary>
 		public ConcurrentDictionary<ulong, Company> companies = new ConcurrentDictionary<ulong, Company>();
+
+		/// <summary>
+		/// A class to contain all the subscriptions for a company.
+		/// This class also sets the expiration dates.
+		/// </summary>
+		class ActiveSubscriptions {
+			/// <summary>
+			/// The amount of time (in milliseconds) to wait before automatically removing a subscription.
+			/// </summary>
+			const int DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+			/// <summary>
+			/// A dictionary of subscription type to expiry date.
+			/// The expiry date is when the subscription type is due to be removed.
+			/// </summary>
+			internal ConcurrentDictionary<SubscriptionType, DateTime?> Subscriptions = new ConcurrentDictionary<SubscriptionType, DateTime?>();
+
+			/// <summary>
+			/// Returns a list of subscription types that should be removed.
+			/// When <paramref name="purge"/> is true, it will also remove the subscription type dictionary,
+			/// that way it will no longer be listed as an active subscription, or as expired.
+			/// </summary>
+			/// <param name="purge"></param>
+			/// <returns></returns>
+			internal List<SubscriptionType> GetExpiredSubscriptions(bool purge) {
+				var now = DateTime.UtcNow;
+				var subscriptions = new List<SubscriptionType>();
+				foreach (var pair in this.Subscriptions) {
+					if (pair.Value.HasValue && pair.Value < now) {
+						subscriptions.Add(pair.Key);
+					}
+				}
+				if (purge) {
+					foreach (var subscription in subscriptions) {
+						this.Subscriptions.TryRemove(subscription, out _);
+					}
+				}
+				return subscriptions;
+			}
+			/// <summary>
+			/// Returns a list of subscription types that will be removed eventually.
+			/// </summary>
+			/// <returns></returns>
+			internal List<SubscriptionType> GetExpiringSubscriptions() {
+				var subscriptions = new List<SubscriptionType>();
+				foreach (var pair in this.Subscriptions) {
+					if (pair.Value.HasValue) {
+						subscriptions.Add(pair.Key);
+					}
+				}
+				return subscriptions;
+			}
+			/// <summary>
+			/// Sets the given expiry date for the given subscription type.
+			/// </summary>
+			/// <param name="subscription"></param>
+			/// <param name="date"></param>
+			/// <returns></returns>
+			private DateTime? SetExpiry(SubscriptionType subscription, DateTime? date)
+				=> this.Subscriptions.AddOrUpdate(subscription, date, (k, d) => date);
+			/// <summary>
+			/// Marks the given subscription type for expiration.
+			/// </summary>
+			/// <param name="subscription"></param>
+			/// <returns></returns>
+			internal DateTime? AddToExpiry(SubscriptionType subscription)
+				=> this.AddToExpiry(subscription, TimeSpan.FromMilliseconds(DEFAULT_TIMEOUT_MS));
+			/// <summary>
+			/// Marks the given subscription type for expiration.
+			/// </summary>
+			/// <param name="subscription"></param>
+			/// <param name="timeout"></param>
+			/// <returns></returns>
+			internal DateTime? AddToExpiry(SubscriptionType subscription, TimeSpan timeout)
+				=> this.SetExpiry(subscription, DateTime.UtcNow.Add(timeout));
+			/// <summary>
+			/// Marks the given subscription types for expiration.
+			/// </summary>
+			/// <param name="subscriptions"></param>
+			/// <returns></returns>
+			internal List<DateTime?> AddToExpiries(IEnumerable<SubscriptionType> subscriptions)
+				=> this.AddToExpiries(subscriptions, TimeSpan.FromMilliseconds(DEFAULT_TIMEOUT_MS));
+			/// <summary>
+			/// Marks the given subscription types for expiration.
+			/// </summary>
+			/// <param name="subscriptions"></param>
+			/// <param name="timeout"></param>
+			/// <returns></returns>
+			internal List<DateTime?> AddToExpiries(IEnumerable<SubscriptionType> subscriptions, TimeSpan timeout)
+				=> subscriptions.Select(r => this.AddToExpiry(r)).ToList();
+			/// <summary>
+			/// Clears the expiration of the given subscription type.
+			/// </summary>
+			/// <param name="subscription"></param>
+			/// <returns></returns>
+			internal DateTime? RemoveExpiry(SubscriptionType subscription)
+				=> this.SetExpiry(subscription, default);
+			/// <summary>
+			/// Clears the expiration of the given subscription types.
+			/// </summary>
+			/// <param name="subscriptions"></param>
+			/// <returns></returns>
+			internal List<DateTime?> RemoveExpiries(IEnumerable<SubscriptionType> subscriptions)
+				=> subscriptions.Select(r => this.RemoveExpiry(r)).ToList();
+
+			/// <summary>
+			/// Removes all subscription types, and returns a list of those that were not going to expire.
+			/// </summary>
+			/// <returns></returns>
+			internal List<SubscriptionType> ResetAllExpiries() {
+				var subscriptions = new List<SubscriptionType>();
+				foreach (var pair in this.Subscriptions) {
+					if (!pair.Value.HasValue) {
+						subscriptions.Add(pair.Key);
+					}
+				}
+				this.Subscriptions.Clear();
+				return subscriptions;
+			}
+		}
+		/// <summary>
+		/// 
+		/// </summary>
+		ConcurrentDictionary<ulong, ActiveSubscriptions> __currentSubscriptions = new ConcurrentDictionary<ulong, ActiveSubscriptions>();
+
+
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="companyId"></param>
+		/// <param name="objectTypes"></param>
+		/// <returns></returns>
+		public async Task<SubscriptionType[]> Sync(ulong companyId, IEnumerable<Type> objectTypes) {
+
+
+
+
+			if (this.socket.Status != TrakitSocketStatus.Opened) {
+				await this.socket.Connect();
+			}
+			var subscribed = this.__currentSubscriptions.GetOrAdd(companyId, (k) => new ActiveSubscriptions());
+
+
+
+
+
+			return default;
+		}
 	}
 }
