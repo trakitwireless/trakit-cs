@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Trakit.Commands;
 using Trakit.Objects;
@@ -347,15 +348,15 @@ namespace Trakit.Sync {
 		/// <summary>
 		/// 
 		/// </summary>
-		public TrakitRestfulCommander rest = new TrakitRestfulCommander();
+		public TrakitRestfulCommander Rest = new TrakitRestfulCommander();
 		/// <summary>
 		/// 
 		/// </summary>
-		public TrakitSocketCommander socket = new TrakitSocketCommander();
+		public TrakitSocketCommander Socket = new TrakitSocketCommander();
 		/// <summary>
 		/// 
 		/// </summary>
-		public ConcurrentDictionary<ulong, Company> companies = new ConcurrentDictionary<ulong, Company>();
+		ConcurrentDictionary<string, ConcurrentDictionary<string, Component>> STORAGE = new ConcurrentDictionary<string, ConcurrentDictionary<string, Component>>();
 
 		/// <summary>
 		/// A class to contain all the subscriptions for a company.
@@ -495,11 +496,33 @@ namespace Trakit.Sync {
 		/// </summary>
 		ConcurrentDictionary<ulong, ActiveSubscriptions> _currentSubscriptions = new ConcurrentDictionary<ulong, ActiveSubscriptions>();
 
-
 		TrakitSocketCommander.MessageHandler _syncHandle;
-		TrakitSocketCommander.MessageHandler _syncHandling = new TrakitSocketCommander.MessageHandler((s, msg) => {
-
-		});
+		bool _syncVersion<T>(T existing, T incoming) where T : Component {
+			return existing == default
+				|| (existing?.v.Length ?? 0) <= 0
+				|| existing.v[0] <= (incoming?.v.FirstOrDefault() ?? -1);
+		}
+		void _syncHandling(TrakitSocketCommander socket, TrakitSocketMessage message) {
+			switch (message.name) {
+				case "companyGeneralMerged":
+				case "companyDeleted":
+					var general = this.Socket.Serializer.Deserialize<CompanyGeneral>(message.body);
+					var storage = STORAGE.GetOrAdd("Company", (k) => new ConcurrentDictionary<string, Component>());
+					storage.AddOrUpdate(
+						general.GetKey(),
+						new Company() { General = general },
+						(k, obj) => {
+							var company = (Company)obj;
+							if (_syncVersion(company.General, general)) company.General = general;
+							return company;
+						}
+					);
+					break;
+				default: 
+					// not handled
+					break;
+			}
+		}
 
 		/// <summary>
 		/// 
@@ -508,37 +531,55 @@ namespace Trakit.Sync {
 		/// <param name="objectTypes"></param>
 		/// <returns></returns>
 		public async Task<SubscriptionType[]> Sync(ulong companyId, IEnumerable<Type> objectTypes) {
-			var subscriptions = objectTypes.SelectMany(GetSubscriptionsByType).ToList();
+			// do this first to throw for invalid object types
+			var objectSubs = objectTypes.ToDictionary(
+				o => o,
+				o => GetSubscriptionsByType(o).ToList()
+			);
 
-			if (this.socket.Status != TrakitSocketStatus.Opened) {
-				if (_syncHandle == default) {
-					_syncHandle = _syncHandling;
-					this.socket.MessageReceived += _syncHandle;
-				}
-				await this.socket.Connect();
+			if (this.Socket.Status != TrakitSocketStatus.Opened) {
+				if (_syncHandle == default) this.Socket.MessageReceived += (_syncHandle = _syncHandling);
+				await this.Socket.Connect();
 			}
+
+
 			var active = this._currentSubscriptions.GetOrAdd(companyId, (k) => new ActiveSubscriptions());
-			foreach (var subscription in active.GetActiveSubscriptions()) {
-				subscriptions.Remove(subscription);
+			List<SubscriptionType> existingSubscriptions = active.GetActiveSubscriptions(),
+								newSubscriptions = new List<SubscriptionType>();
+
+			using (var sauce = new CancellationTokenSource()) {
+				using (var throttler = new SemaphoreSlim(Environment.ProcessorCount)) {
+					await Task.WhenAll(objectSubs.Select(async p => {
+						var subs = p.Value.Except(existingSubscriptions).ToArray();
+						if (subs.Length > 0) {
+							newSubscriptions.AddRange(subs);
+							await throttler.WaitAsync(sauce.Token);
+							try {
+								// subscribe
+								Request socketRequest = null;// make this somehow
+								Response socketResponse = await this.Socket.Command<Response>(socketRequest);
+								if (socketResponse.errorCode != ErrorCode.success) {
+									//throw new CommandError(response);
+								}
+								// load
+								Request restRequest = null;// now make it for REST
+								Response restResponse = await this.Rest.Command<Response>(restRequest);
+								if (restResponse.errorCode != ErrorCode.success) {
+									//throw new CommandError(response);
+								}
+								// add all response content to storage
+							} catch {
+								sauce.Cancel();
+								throw;
+							} finally {
+								throttler.Release();
+							}
+							active.RemoveExpiries(subs);
+						}
+					}));
+				}
 			}
-			await Task.WhenAll(subscriptions.Select(async s => {
-				Request request = null;// make this somehow
-				Response response = await this.socket.Command<Response>(request);
-				if (response.errorCode != ErrorCode.success) {
-					//throw new CommandError(response);
-				}
-				request = null;// now make it for REST
-				response = await this.rest.Command<Response>(request);
-				if (response.errorCode != ErrorCode.success) {
-					//throw new CommandError(response);
-				}
-
-				// add all response content to storage
-
-				active.RemoveExpiry(s);
-			}).ToArray());
-
-			return subscriptions.ToArray();
+			return newSubscriptions.ToArray();
 		}
 	}
 }
