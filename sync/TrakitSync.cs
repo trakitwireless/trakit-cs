@@ -19,12 +19,12 @@ namespace Trakit.Sync {
 		/// <typeparam name="TRequestable">An <see cref="IRequestable"/> resource that can be synchronized by a client.</typeparam>
 		/// <param name="requestable">The instance of an <see cref="IRequestable"/> object.</param>
 		/// <returns>An array of <see cref="SubscriptionType"/>s (usually only one item) to keep the given <see cref="IRequestable"/> in-sync.</returns>
-		/// <exception cref="InvalidOperationException">When <typeparamref name="TRequestable"/> does not implement <see cref="IRequestable"/>.</exception>
 		/// <exception cref="KeyNotFoundException">When <typeparamref name="TRequestable"/> is not capable of being synchronized.</exception>
 		public static SubscriptionType[] GetSubscriptionsByObject<TRequestable>(
 			TRequestable requestable = default
-		) where TRequestable : IRequestable
-			=> GetSubscriptionsByType(requestable?.GetType() ?? typeof(TRequestable));
+		) where TRequestable : class, IRequestable => GetSubscriptionsByType(
+			requestable?.GetType() ?? typeof(TRequestable)
+		);
 		/// <summary>
 		/// Returns the appropriate <see cref="SubscriptionType"/>s for the given type.
 		/// </summary>
@@ -40,7 +40,7 @@ namespace Trakit.Sync {
 			if (!typeof(IRequestable).IsAssignableFrom(type)) {
 				throw new InvalidOperationException($"{type.FullName} is not IRequestable");
 			}
-			switch (type.FullName.Split('.').Last()) {
+			switch (type.Name) {
 				#region Company
 				/// <seealso cref="Company"/>
 				case "Company":
@@ -493,7 +493,13 @@ namespace Trakit.Sync {
 		/// <summary>
 		/// 
 		/// </summary>
-		ConcurrentDictionary<ulong, ActiveSubscriptions> __currentSubscriptions = new ConcurrentDictionary<ulong, ActiveSubscriptions>();
+		ConcurrentDictionary<ulong, ActiveSubscriptions> _currentSubscriptions = new ConcurrentDictionary<ulong, ActiveSubscriptions>();
+
+
+		TrakitSocketCommander.MessageHandler _syncHandle;
+		TrakitSocketCommander.MessageHandler _syncHandling = new TrakitSocketCommander.MessageHandler((s, msg) => {
+
+		});
 
 		/// <summary>
 		/// 
@@ -505,15 +511,17 @@ namespace Trakit.Sync {
 			var subscriptions = objectTypes.SelectMany(GetSubscriptionsByType).ToList();
 
 			if (this.socket.Status != TrakitSocketStatus.Opened) {
+				if (_syncHandle == default) {
+					_syncHandle = _syncHandling;
+					this.socket.MessageReceived += _syncHandle;
+				}
 				await this.socket.Connect();
 			}
-			var active = this.__currentSubscriptions.GetOrAdd(companyId, (k) => new ActiveSubscriptions());
+			var active = this._currentSubscriptions.GetOrAdd(companyId, (k) => new ActiveSubscriptions());
 			foreach (var subscription in active.GetActiveSubscriptions()) {
 				subscriptions.Remove(subscription);
 			}
 			await Task.WhenAll(subscriptions.Select(async s => {
-				this.socket.MessageReceived += (o, m) => { };
-
 				Request request = null;// make this somehow
 				Response response = await this.socket.Command<Response>(request);
 				if (response.errorCode != ErrorCode.success) {
