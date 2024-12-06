@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Trakit.Commands;
@@ -358,6 +359,10 @@ namespace Trakit.Sync {
 		/// </summary>
 		ConcurrentDictionary<string, ConcurrentDictionary<string, Component>> STORAGE = new ConcurrentDictionary<string, ConcurrentDictionary<string, Component>>();
 
+		public TrakitSync() {
+			this.Socket.MessageReceived += _syncHandling;
+		}
+
 		/// <summary>
 		/// A class to contain all the subscriptions for a company.
 		/// This class also sets the expiration dates.
@@ -496,29 +501,65 @@ namespace Trakit.Sync {
 		/// </summary>
 		ConcurrentDictionary<ulong, ActiveSubscriptions> _currentSubscriptions = new ConcurrentDictionary<ulong, ActiveSubscriptions>();
 
-		TrakitSocketCommander.MessageHandler _syncHandle;
-		bool _syncVersion<T>(T existing, T incoming) where T : Component {
-			return existing == default
-				|| (existing?.v.Length ?? 0) <= 0
-				|| existing.v[0] <= (incoming?.v.FirstOrDefault() ?? -1);
-		}
 		void _syncHandling(TrakitSocketCommander socket, TrakitSocketMessage message) {
 			switch (message.name) {
-				case "companyGeneralMerged":
+				case "assetDeleted": {
+					var deleted = this.Socket.Serializer.Deserialize<AssetGeneral>(message.body);
+					if (STORAGE.TryGetValue("asset", out var storage)) {
+						storage.TryRemove(deleted.GetKey(), out _);
+					}
+				}
+				break;
 				case "companyDeleted":
-					var general = this.Socket.Serializer.Deserialize<CompanyGeneral>(message.body);
-					var storage = STORAGE.GetOrAdd("Company", (k) => new ConcurrentDictionary<string, Component>());
-					storage.AddOrUpdate(
-						general.GetKey(),
-						new Company() { General = general },
+				case "companyGeneralMerged":
+					var companyGeneral = this.Socket.Serializer.Deserialize<CompanyGeneral>(message.body);
+					STORAGE.GetOrAdd("company", (k) => new ConcurrentDictionary<string, Component>()).AddOrUpdate(
+						companyGeneral.GetKey(),
+						new Company() { General = companyGeneral },
 						(k, obj) => {
 							var company = (Company)obj;
-							if (_syncVersion(company.General, general)) company.General = general;
+							if (companyGeneral > company.General) company.General = companyGeneral;
 							return company;
 						}
 					);
 					break;
-				default: 
+				case "companyLabelsMerged":
+					var companyLabels = this.Socket.Serializer.Deserialize<CompanyStyles>(message.body);
+					STORAGE.GetOrAdd("company", (k) => new ConcurrentDictionary<string, Component>()).AddOrUpdate(
+						companyLabels.GetKey(),
+						new Company() { Styles = companyLabels },
+						(k, obj) => {
+							var company = (Company)obj;
+							if (companyLabels > company.Styles) company.Styles = companyLabels;
+							return company;
+						}
+					);
+					break;
+				case "companyPoliciesMerged":
+					var companyPolicies = this.Socket.Serializer.Deserialize<CompanyPolicies>(message.body);
+					STORAGE.GetOrAdd("company", (k) => new ConcurrentDictionary<string, Component>()).AddOrUpdate(
+						companyPolicies.GetKey(),
+						new Company() { Policies = companyPolicies },
+						(k, obj) => {
+							var company = (Company)obj;
+							if (companyPolicies > company.Styles) company.Policies = companyPolicies;
+							return company;
+						}
+					);
+					break;
+				case "companyResellerMerged":
+					var companyReseller = this.Socket.Serializer.Deserialize<CompanyReseller>(message.body);
+					STORAGE.GetOrAdd("company", (k) => new ConcurrentDictionary<string, Component>()).AddOrUpdate(
+						companyReseller.GetKey(),
+						new Company() { Reseller = companyReseller },
+						(k, obj) => {
+							var company = (Company)obj;
+							if (companyReseller > company.Styles) company.Reseller = companyReseller;
+							return company;
+						}
+					);
+					break;
+				default:
 					// not handled
 					break;
 			}
@@ -538,7 +579,6 @@ namespace Trakit.Sync {
 			);
 
 			if (this.Socket.Status != TrakitSocketStatus.Opened) {
-				if (_syncHandle == default) this.Socket.MessageReceived += (_syncHandle = _syncHandling);
 				await this.Socket.Connect();
 			}
 
