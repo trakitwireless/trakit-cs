@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Trakit.Commands;
@@ -15,6 +14,8 @@ namespace Trakit.Sync {
 	/// A class to help manage and synchronize <see cref="Component"/> objects.
 	/// </summary>
 	public class TrakitSync {
+		/// 
+		const int MAX_CONCURRENT_COMMANDS = 10;
 		/// <summary>
 		/// Returns the appropriate <see cref="SubscriptionType"/>s for the given object.
 		/// </summary>
@@ -571,6 +572,15 @@ namespace Trakit.Sync {
 		/// <param name="companyId"></param>
 		/// <param name="objectTypes"></param>
 		/// <returns></returns>
+		public Task<SubscriptionType[]> Sync(ulong companyId, params Type[] objectTypes)
+			=> this.Sync(companyId, objectTypes.ToList());
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="companyId"></param>
+		/// <param name="objectTypes"></param>
+		/// <returns></returns>
+		/// <exception cref="AggregateException"></exception>
 		public async Task<SubscriptionType[]> Sync(ulong companyId, IEnumerable<Type> objectTypes) {
 			// do this first to throw for invalid object types
 			var objectSubs = objectTypes.ToDictionary(
@@ -578,23 +588,39 @@ namespace Trakit.Sync {
 				o => GetSubscriptionsByType(o).ToList()
 			);
 
-			if (this.Socket.Status != TrakitSocketStatus.Opened) {
+			if (this.Socket.Status == TrakitSocketStatus.Closed) {
 				await this.Socket.Connect();
+			} else if (this.Socket.Status != TrakitSocketStatus.Opened) {
+				var conn = new TaskCompletionSource<TrakitSocketStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+				void handler(TrakitSocketCommander sender) {
+					this.Socket.StatusChanged -= handler;
+					if (
+						this.Socket.Status != TrakitSocketStatus.Opened
+						|| !conn.TrySetResult(this.Socket.Status)
+					) {
+						conn.TrySetCanceled();
+					}
+				}
+				this.Socket.StatusChanged += handler;
+				if (this.Socket.Status == TrakitSocketStatus.Opened) {
+					// in case the status did change before the handler was bound
+					conn.TrySetResult(this.Socket.Status);
+				}
+				await conn.Task;
 			}
 
-
-			var active = this._currentSubscriptions.GetOrAdd(companyId, (k) => new ActiveSubscriptions());
-			List<SubscriptionType> existingSubscriptions = active.GetActiveSubscriptions(),
-								newSubscriptions = new List<SubscriptionType>();
+			var active = this._currentSubscriptions.GetOrAdd(companyId, _ => new ActiveSubscriptions());
+			var existingSubscriptions = active.GetActiveSubscriptions();
+			var newSubscriptions = new ConcurrentBag<SubscriptionType>();
+			var errors = new ConcurrentBag<Exception>();
 
 			using (var sauce = new CancellationTokenSource()) {
-				using (var throttler = new SemaphoreSlim(Environment.ProcessorCount)) {
+				using (var throttler = new SemaphoreSlim(Math.Min(MAX_CONCURRENT_COMMANDS, Environment.ProcessorCount))) {
 					await Task.WhenAll(objectSubs.Select(async p => {
 						var subs = p.Value.Except(existingSubscriptions).ToArray();
 						if (subs.Length > 0) {
-							newSubscriptions.AddRange(subs);
-							await throttler.WaitAsync(sauce.Token);
 							try {
+								await throttler.WaitAsync(sauce.Token);
 								// subscribe
 								Request socketRequest = null;// make this somehow
 								Response socketResponse = await this.Socket.Command<Response>(socketRequest);
@@ -607,19 +633,23 @@ namespace Trakit.Sync {
 								if (restResponse.errorCode != ErrorCode.success) {
 									//throw new CommandError(response);
 								}
-								// add all response content to storage
-							} catch {
-								sauce.Cancel();
-								throw;
+								// add REST response content to storage
+							} catch (Exception ex) {
+								errors.Add(ex);
 							} finally {
 								throttler.Release();
 							}
-							active.RemoveExpiries(subs);
+							foreach (var sub in subs) {
+								active.RemoveExpiry(sub);
+								newSubscriptions.Add(sub);
+							}
 						}
 					}));
 				}
 			}
-			return newSubscriptions.ToArray();
+			return errors.Count > 0
+				? throw new AggregateException(errors)
+				: newSubscriptions.ToArray();
 		}
 	}
 }
