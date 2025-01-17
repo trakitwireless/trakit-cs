@@ -56,9 +56,13 @@ namespace Trakit.Socket {
 		/// <returns></returns>
 		internal static string errorToReason(string value) {
 			byte[] bytes = Encoding.UTF8.GetBytes(WHITESPACE.Replace(value ?? "", " ").Trim());
-			return bytes.Length == 0
-				? default
-				: Encoding.UTF8.GetString(bytes.Take(CLOSE_REASON_LIMIT).ToArray());
+			if (bytes.Length > 0) {
+				string reason = Encoding.UTF8.GetString(bytes.Take(CLOSE_REASON_LIMIT).ToArray());
+				return value.StartsWith(reason)    // GetString could suffix the reason with `?` making it 125 bytes long
+					? reason
+					: reason.Substring(0, reason.Length - 1);
+			}
+			return default;
 		}
 		#endregion Statics
 
