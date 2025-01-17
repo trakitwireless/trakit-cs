@@ -39,17 +39,26 @@ namespace Trakit.Socket {
 		/// </remarks>
 		public const string URI_BETA = "wss://kraken.trakit.ca";
 		#region Statics
-		//sequential white space of all kinds
+		// sequential white space of all kinds
 		static Regex WHITESPACE = new Regex(@"[\r\n\s\t]+", RegexOptions.Compiled);
+		// maximum close reason phrase length (who chose this?)
+		const int CLOSE_REASON_LIMIT = 123;
 		/// <summary>
-		/// Replaces all white-space sequences with a single space character, and trims the result.
+		/// Replaces all white-space sequences with a single space character, trims the result, and limits the length to 123 characters.
 		/// If the result is an empty string, it will instead return null.
 		/// </summary>
+		/// <remarks>
+		/// The actual reason phrase may contain fewer than 123 characters because the phrase is UTF-8 encoded,
+		/// so some non-ASCII characters may be corrupted if they occur at the end of the limit.
+		/// For more information on close reason phrases, see https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/close
+		/// </remarks>
 		/// <param name="value"></param>
 		/// <returns></returns>
 		internal static string errorToReason(string value) {
-			value = WHITESPACE.Replace(value ?? "", " ").Trim();
-			return value == string.Empty ? default : value;
+			byte[] bytes = Encoding.UTF8.GetBytes(WHITESPACE.Replace(value ?? "", " ").Trim());
+			return bytes.Length == 0
+				? default
+				: Encoding.UTF8.GetString(bytes.Take(CLOSE_REASON_LIMIT).ToArray());
 		}
 		#endregion Statics
 
