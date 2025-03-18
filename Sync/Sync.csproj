@@ -32,6 +32,6 @@
 	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 		<PackageReference Include="Trakit.Commands" Version="0.3.0.1" />
-		<PackageReference Include="Trakit.Objects" Version="0.3.0.1" />
+		<PackageReference Include="Trakit.Objects" Version="0.3.0.2" />
 	</ItemGroup>
 </Project>
