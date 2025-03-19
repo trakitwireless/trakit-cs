@@ -6,19 +6,19 @@
 		<Title>Trak-iT API Synchronization</Title>
 		<PackageProjectUrl>https://apis.trakit.ca/dotnet</PackageProjectUrl>
 		<AssemblyName>Trakit.$(MSBuildProjectName)</AssemblyName>
-		<AssemblyVersion>0.3.0.1</AssemblyVersion>
-		<FileVersion>0.3.0.1</FileVersion>
+		<AssemblyVersion>0.3.0.3</AssemblyVersion>
+		<FileVersion>0.3.0.3</FileVersion>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
-		<Version>0.3.0.1</Version>
+		<Version>0.3.0.3</Version>
 		<PackageIcon>trakit-sync.png</PackageIcon>
 		<Copyright>2024 Traki-iT Wireless Inc.</Copyright>
 		<Authors>Trak-it Wireless Inc.</Authors>
 	</PropertyGroup>
 	<ItemGroup>
-		<None Update="trakit-sync.png">
-			<Pack>True</Pack>
-			<PackagePath>\</PackagePath>
+		<None Include="..\trakit-sync.png">
+		  <Pack>True</Pack>
+		  <PackagePath>\</PackagePath>
 		</None>
 		<None Include="..\LICENSE">
 			<Pack>True</Pack>
@@ -31,7 +31,9 @@
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-		<PackageReference Include="Trakit.Commands" Version="0.3.0.1" />
-		<PackageReference Include="Trakit.Objects" Version="0.3.0.2" />
+	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\..\trakit-cs-commands\Commands\Commands.csproj" />
+	  <ProjectReference Include="..\..\trakit-cs-objects\Objects\Objects.csproj" />
 	</ItemGroup>
 </Project>
