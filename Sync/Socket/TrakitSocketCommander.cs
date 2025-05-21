@@ -412,7 +412,7 @@ namespace Trakit.Socket {
 							var msg = new TrakitSocketMessage(message);
 							switch (msg.name) {
 								case "connectionResponse":
-									this.Self = this.Serializer.Deserialize<RespSelfGet>(msg.body);
+									this.Self = this.Serializer.Deserialize<RepSelfGet>(msg.body);
 									if (
 										(
 											// machine was not authorized
@@ -576,14 +576,14 @@ namespace Trakit.Socket {
 		#endregion Messages - Keep-alive
 
 		#region Commands
-		/// used to correlate requests and responses. <seealso cref="Request.reqId"/>
+		/// used to correlate requests and responses. <seealso cref="Payload.reqId"/>
 		int _reqId;
 		/// command name reply suffix and unknown command response name
 		const string RESPONSE_SUFFIX = "Response",
 					UNKNOWN_COMMAND = "unknownCommand" + RESPONSE_SUFFIX;
-		/// converts the <see cref="Request"/> type into a WebSocket command name
-		static string _getCommandName<TRequest>(TRequest request) where TRequest : Request {
-			var matches = request.GetNameParts();
+		/// converts the <see cref="Payload"/> type into a WebSocket command name
+		static string _getCommandName<TPayload>(TPayload payload) where TPayload : Payload {
+			var matches = payload.GetNameParts();
 			if (matches.Length >= 2) {
 				string objName = matches[0],
 					cmdName = matches[1].ToLowerInvariant();
@@ -629,7 +629,7 @@ namespace Trakit.Socket {
 						return cmdName;
 				}
 			}
-			throw new NotImplementedException($"no command supported for {typeof(TRequest).Name}");
+			throw new NotImplementedException($"no command supported for {typeof(TPayload).Name}");
 		}
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
@@ -687,15 +687,15 @@ namespace Trakit.Socket {
 		/// <summary>
 		/// Sends a command to the Trak-iT <see cref="WebSocket"/> service, and returns a <see cref="Task"/> that completes when a reply is received.
 		/// </summary>
-		/// <typeparam name="TResponse"></typeparam>
-		/// <param name="request"></param>
+		/// <typeparam name="TReply"></typeparam>
+		/// <param name="payload"></param>
 		/// <returns></returns>
 		/// <exception cref="InvalidOperationException"></exception>
-		public override async Task<TResponse> Command<TResponse>(Request request)
-			=> this.Serializer.ConvertFrom<TResponse>(
+		public override async Task<TReply> Command<TReply>(Payload payload)
+			=> this.Serializer.ConvertFrom<TReply>(
 				await this.Command(
-					_getCommandName(request),
-					this.Serializer.ConvertTo<JObject>(request)
+					_getCommandName(payload),
+					this.Serializer.ConvertTo<JObject>(payload)
 				)
 			);
 		#endregion Commands
@@ -706,8 +706,8 @@ namespace Trakit.Socket {
 		/// <param name="company"></param>
 		/// <param name="subscriptions"></param>
 		/// <returns></returns>
-		public Task<RespSubscription> Subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.Command<RespSubscription>(new ReqSubscriptionMerge() {
+		public Task<RepSubscription> Subscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
+			=> this.Command<RepSubscription>(new PaySubscriptionMerge() {
 				company = new ParamId() { id = company },
 				subscriptionTypes = subscriptions.ToList()
 			});
@@ -717,8 +717,8 @@ namespace Trakit.Socket {
 		/// <param name="company"></param>
 		/// <param name="subscriptions"></param>
 		/// <returns></returns>
-		public Task<RespSubscription> Unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
-			=> this.Command<RespSubscription>(new ReqSubscriptionRemove() {
+		public Task<RepSubscription> Unsubscribe(ulong company, IEnumerable<SubscriptionType> subscriptions)
+			=> this.Command<RepSubscription>(new PaySubscriptionRemove() {
 				company = new ParamId() { id = company },
 				subscriptionTypes = subscriptions.ToList()
 			});
@@ -726,8 +726,8 @@ namespace Trakit.Socket {
 		/// Gets the list of current subscriptions for the <see cref="Client"/>.
 		/// </summary>
 		/// <returns></returns>
-		public Task<RespSubscriptionList> GetSubscriptionList()
-			=> this.Command<RespSubscriptionList>(new ReqSubscriptionList());
+		public Task<RepSubscriptionList> GetSubscriptionList()
+			=> this.Command<RepSubscriptionList>(new PaySubscriptionList());
 		#endregion Commands - Subscription
 	}
 }

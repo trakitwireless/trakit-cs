@@ -41,10 +41,10 @@ namespace Trakit.Provisioning {
 		/// <summary>
 		/// 
 		/// </summary>
-		/// <typeparam name="TResponse"></typeparam>
-		/// <param name="request"></param>
+		/// <typeparam name="TReply"></typeparam>
+		/// <param name="payload"></param>
 		/// <returns></returns>
 		/// <exception cref="NotImplementedException"></exception>
-		public override Task<TResponse> Command<TResponse>(Request request) => throw new NotImplementedException();
+		public override Task<TReply> Command<TReply>(Payload payload) => throw new NotImplementedException();
 	}
 }

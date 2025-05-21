@@ -53,7 +53,7 @@ namespace Trakit.Restful {
 		// used to split object names into paths
 		static readonly Regex SPLITTER = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
 		// outs the verb and path for the given request
-		void _commandHttp<TRequest>(TRequest request, out HttpMethod method, out string route) where TRequest : Request {
+		void _commandHttp<TPayload>(TPayload request, out HttpMethod method, out string route) where TPayload : Payload {
 			method = default;
 			route = default;
 			string query = "";
@@ -78,7 +78,7 @@ namespace Trakit.Restful {
 				switch (matches[1]) {
 					case "Get":
 						method = HttpMethod.Get;
-						if (request is IReqSingle single) {
+						if (request is IPaySingle single) {
 							route = objNames[0]
 								+ single.GetKey()
 								+ string.Join("/", objNames.Skip(1));
@@ -86,13 +86,13 @@ namespace Trakit.Restful {
 						break;
 					case "List":
 						method = HttpMethod.Get;
-						if (request is IReqListByCompany byCompany) {
+						if (request is IPayListByCompany byCompany) {
 							route = $"companies/{byCompany.company.id}/{route}";
 						}
-						if (request is IReqListByLabels byLabels) {
+						if (request is IPayListByLabels byLabels) {
 							query += $"&labels={HttpUtility.UrlEncode(string.Join(",", byLabels.labels))}";
 						}
-						if (request is IReqListByReferences byRefs) {
+						if (request is IPayListByReferences byRefs) {
 							query += "&" + string.Join("&", byRefs.references.Select(p => $"{HttpUtility.UrlEncode(p.Key)}={HttpUtility.UrlEncode(p.Value)}"));
 						}
 						break;
@@ -185,18 +185,18 @@ namespace Trakit.Restful {
 		#endregion Commands
 
 		/// <summary>
-		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Response"/>.
+		/// Sends the given request to Trak-iT's RESTful API and awaits a task whose result is both the HTTP response, and deserialized <see cref="Reply"/>.
 		/// </summary>
-		/// <typeparam name="TResp">The <see cref="Response"/> for the given request.</typeparam>
-		/// <param name="request">Request message details.</param>
+		/// <typeparam name="TReply">The <see cref="Reply"/> for the given request.</typeparam>
+		/// <param name="payload">Request message details.</param>
 		/// <returns>A Task whose result contains the HTTP and Trak-iT API responses.</returns>
-		public override async Task<TResp> Command<TResp>(Request request) {
-			_commandHttp(request, out HttpMethod method, out string route);
-			return this.Serializer.ConvertFrom<TResp>(
+		public override async Task<TReply> Command<TReply>(Payload payload) {
+			_commandHttp(payload, out HttpMethod method, out string route);
+			return this.Serializer.ConvertFrom<TReply>(
 				await this.Command(
 					route,
 					method,
-					this.Serializer.ConvertTo<JObject>(request)
+					this.Serializer.ConvertTo<JObject>(payload)
 				)
 			);
 		}

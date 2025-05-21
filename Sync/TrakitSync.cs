@@ -622,14 +622,14 @@ namespace Trakit.Sync {
 							try {
 								await throttler.WaitAsync(sauce.Token);
 								// subscribe
-								Request socketRequest = null;// make this somehow
-								Response socketResponse = await this.Socket.Command<Response>(socketRequest);
+								Payload socketRequest = null;// make this somehow
+								Reply socketResponse = await this.Socket.Command<Reply>(socketRequest);
 								if (socketResponse.errorCode != ErrorCode.success) {
 									//throw new CommandError(response);
 								}
 								// load
-								Request restRequest = null;// now make it for REST
-								Response restResponse = await this.Rest.Command<Response>(restRequest);
+								Payload restRequest = null;// now make it for REST
+								Reply restResponse = await this.Rest.Command<Reply>(restRequest);
 								if (restResponse.errorCode != ErrorCode.success) {
 									//throw new CommandError(response);
 								}
