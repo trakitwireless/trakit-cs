@@ -279,7 +279,7 @@ namespace Trakit.Socket {
 							uri,
 							0
 						)
-						: $"Machine " + Convert.ToBase64String(Encoding.UTF8.GetBytes(_machine.key))
+						: "Machine " + Convert.ToBase64String(Encoding.UTF8.GetBytes(_machine.key))
 				);
 			}
 			try {
