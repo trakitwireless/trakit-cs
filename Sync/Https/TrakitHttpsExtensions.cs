@@ -51,7 +51,7 @@ namespace Trakit.Https.Extensions {
 			request.Headers.Authorization = machine.secret?.Length > 0
 				? new AuthenticationHeaderValue(
 					"HMAC256",
-					machine.CreateHmacCreateSignature(
+					machine.CreateHmacSignature(
 						request.Headers.Date.Value,
 						request.Method,
 						request.RequestUri,
@@ -74,7 +74,7 @@ namespace Trakit.Https.Extensions {
 		/// <param name="absoluteUri">Full <see cref="Uri"/> of the request.</param>
 		/// <param name="contentLength">Request content body length.</param>
 		/// <returns>A Base64 encoded signature from the given request details.</returns>
-		public static string CreateHmacCreateSignature(
+		public static string CreateHmacSignature(
 			this Machine machine,
 			DateTimeOffset date,
 			HttpMethod method,

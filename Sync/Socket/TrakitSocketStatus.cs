@@ -6,7 +6,7 @@ namespace Trakit.Socket {
 	/// </summary>
 	public enum TrakitSocketStatus : byte {
 		/// <summary>
-		/// A connection is being established and is awaiting the innitial <c>connectionResponse</c> message.
+		/// A connection is being established and is awaiting the initial <c>connectionResponse</c> message.
 		/// </summary>
 		Opening = 1,
 		/// <summary>

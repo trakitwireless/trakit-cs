@@ -273,7 +273,7 @@ namespace Trakit.Socket {
 				this.Client.Options.SetRequestHeader(
 					"Authorization",
 					_machine.secret?.Length > 0
-						? "HMAC256 " + _machine.CreateHmacCreateSignature(
+						? "HMAC256 " + _machine.CreateHmacSignature(
 							DateTime.UtcNow,
 							HttpMethod.Get,
 							uri,
