@@ -53,7 +53,7 @@ namespace Trakit.Restful {
 		// used to split object names into paths
 		static readonly Regex SPLITTER = new Regex("[A-Z][a-z]+", RegexOptions.Compiled);
 		// outs the verb and path for the given request
-		void _commandHttp<TPayload>(TPayload request, out HttpMethod method, out string route) where TPayload : Payload {
+		void _commandHttp(Payload request, out HttpMethod method, out string route) {
 			method = default;
 			route = default;
 			string query = "";
@@ -139,14 +139,14 @@ namespace Trakit.Restful {
 			} else {
 				// request has a body
 				content = this.Serializer.Serialize(body);
-				request.Content = new StringContent(content, Encoding.UTF8, "text/json");
+				request.Content = new StringContent(content, Encoding.UTF8, "application/json");
 			}
 			// add headers
 			foreach (var pair in this.Headers) {
 				request.Headers.Add(pair.Key, pair.Value);
-			}    
+			}
 			// add machine
-						if (_machine != default) {
+			if (_machine != default) {
 				_machine.AuthorizeRequest(request);
 			}
 			route = request.RequestUri.ToString();

@@ -226,7 +226,7 @@ namespace Trakit.Socket {
 		}
 		/// token source for managing (dis)connection, and incoming/outgoing messaging
 		CancellationTokenSource _runSauce;
-		/// an awaitable task which completes after setting <see cref="TrakitObjectCommander{TClient}.Self"/>
+		/// an awaitable task which completes after setting <see cref="TrakitObjectCommander{TClient}.Account"/>
 		Task _connecting() {
 			void handler(TrakitSocketCommander sender) {
 				this.StatusChanged -= handler;
@@ -412,35 +412,35 @@ namespace Trakit.Socket {
 							var msg = new TrakitSocketMessage(message);
 							switch (msg.name) {
 								case "connectionResponse":
-									this.Self = this.Serializer.Deserialize<RepSelfGet>(msg.body);
+									this.Account = this.Serializer.Deserialize<RepSelfGet>(msg.body);
 									if (
 										(
 											// machine was not authorized
 											_machine != default
-											&& this.Self.errorCode != ErrorCode.success
+											&& this.Account.errorCode != ErrorCode.success
 										) || (
 											// user ok, or session expire, or not logged in
-											this.Self.errorCode != ErrorCode.success
-											&& this.Self.errorCode != ErrorCode.passwordExpired
-											&& this.Self.errorCode != ErrorCode.sessionExpired
-											&& this.Self.errorCode != ErrorCode.userNotLoggedIn
+											this.Account.errorCode != ErrorCode.success
+											&& this.Account.errorCode != ErrorCode.passwordExpired
+											&& this.Account.errorCode != ErrorCode.sessionExpired
+											&& this.Account.errorCode != ErrorCode.userNotLoggedIn
 										)
 									) {
 										throw new TrakitSocketException(
-											this.Self.message,
+											this.Account.message,
 											WebSocketCloseStatus.PolicyViolation
 										);
 									}
 									_onStatus(TrakitSocketStatus.Opened);
 									break;
 								case "sessionMachineMerged":
-									this.Self.machine = this.Serializer.Deserialize<SelfMachine>(msg.body);
+									this.Account.machine = this.Serializer.Deserialize<SelfMachine>(msg.body);
 									break;
 								case "sessionGeneralMerged":
-									this.Self.user.General = this.Serializer.Deserialize<SelfUserGeneral>(msg.body);
+									this.Account.user.General = this.Serializer.Deserialize<SelfUserGeneral>(msg.body);
 									break;
 								case "sessionAdvancedMerged":
-									this.Self.user.Advanced = this.Serializer.Deserialize<SelfUserAdvanced>(msg.body);
+									this.Account.user.Advanced = this.Serializer.Deserialize<SelfUserAdvanced>(msg.body);
 									break;
 							}
 							this.MessageReceived?.Invoke(this, msg);
