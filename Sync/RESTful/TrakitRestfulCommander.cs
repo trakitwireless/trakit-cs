@@ -35,10 +35,20 @@ namespace Trakit.Restful {
 		/// </remarks>
 		public const string URI_BETA = "https://mindflayer.trakit.ca";
 
-		public TrakitRestfulCommander() : this(new Uri(URI_PROD)) { }
-		public TrakitRestfulCommander(Uri baseAddress) {
-			this.BaseAddress = baseAddress;
+		public TrakitRestfulCommander(Uri baseAddress = default) : base(baseAddress ?? new Uri(URI_PROD)) {
 			this.Client = new HttpClient();
+		}
+		public TrakitRestfulCommander(RepSelfGet account, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(account);
+		}
+		public TrakitRestfulCommander(SelfMachine machine, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(machine);
+		}
+		public TrakitRestfulCommander(Machine machine, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(machine);
+		}
+		public TrakitRestfulCommander(Guid sessionId, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(sessionId);
 		}
 		public void Dispose() {
 			var http = this.Client;
@@ -146,8 +156,10 @@ namespace Trakit.Restful {
 				request.Headers.Add(pair.Key, pair.Value);
 			}
 			// add machine
-			if (_machine != default) {
-				_machine.AuthorizeRequest(request);
+			if (this.Account.machine != default) {
+				this.Account.machine.AuthorizeRequest(request);
+			} else if (Guid.TryParse(this.Account.ghostId, out Guid ghostId)) {
+				request.Headers.Add("Authorization", $"Bearer {ghostId}");
 			}
 			route = request.RequestUri.ToString();
 			return request;

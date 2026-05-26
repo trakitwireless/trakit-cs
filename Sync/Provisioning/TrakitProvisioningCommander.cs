@@ -2,6 +2,7 @@
 using System.Net.Http;
 using System.Threading.Tasks;
 using Trakit.Commands;
+using Trakit.Objects;
 
 namespace Trakit.Provisioning {
 	/// <summary>
@@ -26,10 +27,20 @@ namespace Trakit.Provisioning {
 		/// </remarks>
 		public const string URI_BETA = "https://chimera.trakit.ca";
 
-		public TrakitProvisioningCommander() : this(new Uri(URI_PROD)) { }
-		public TrakitProvisioningCommander(Uri baseAddress) {
-			this.BaseAddress = baseAddress;
+		public TrakitProvisioningCommander(Uri baseAddress = default) : base(baseAddress ?? new Uri(URI_PROD)) {
 			this.Client = new HttpClient();
+		}
+		public TrakitProvisioningCommander(RepSelfGet account, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(account);
+		}
+		public TrakitProvisioningCommander(SelfMachine machine, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(machine);
+		}
+		public TrakitProvisioningCommander(Machine machine, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(machine);
+		}
+		public TrakitProvisioningCommander(Guid sessionId, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(sessionId);
 		}
 		public void Dispose() {
 			var http = this.Client;
