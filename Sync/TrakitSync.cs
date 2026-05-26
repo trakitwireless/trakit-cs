@@ -62,8 +62,9 @@ namespace Trakit.Sync {
 				/// <seealso cref="CompanyDirectory"/>
 				case "CompanyDirectory":
 					break;    // not yet implemented
-				/// <seealso cref="CompanyStyles"/>
-				case "CompanyStyles":
+				/// <seealso cref="CompanyStyle"/>
+				case "CompanyStyle":
+				case "CompanyLabel":
 					return new[] {
 						SubscriptionType.companyLabels,
 					};
@@ -525,25 +526,25 @@ namespace Trakit.Sync {
 					);
 					break;
 				case "companyLabelsMerged":
-					var companyLabels = this.Socket.Serializer.Deserialize<CompanyStyles>(message.body);
+					var companyLabels = this.Socket.Serializer.Deserialize<CompanyStyle>(message.body);
 					STORAGE.GetOrAdd("company", (k) => new ConcurrentDictionary<string, Component>()).AddOrUpdate(
 						companyLabels.GetKey(),
-						new Company() { Styles = companyLabels },
+						new Company() { Style = companyLabels },
 						(k, obj) => {
 							var company = (Company)obj;
-							if (companyLabels > company.Styles) company.Styles = companyLabels;
+							if (companyLabels > company.Style) company.Style = companyLabels;
 							return company;
 						}
 					);
 					break;
 				case "companyPoliciesMerged":
-					var companyPolicies = this.Socket.Serializer.Deserialize<CompanyPolicies>(message.body);
+					var companyPolicies = this.Socket.Serializer.Deserialize<CompanyPolicy>(message.body);
 					STORAGE.GetOrAdd("company", (k) => new ConcurrentDictionary<string, Component>()).AddOrUpdate(
 						companyPolicies.GetKey(),
-						new Company() { Policies = companyPolicies },
+						new Company() { Policy = companyPolicies },
 						(k, obj) => {
 							var company = (Company)obj;
-							if (companyPolicies > company.Styles) company.Policies = companyPolicies;
+							if (companyPolicies > company.Style) company.Policy = companyPolicies;
 							return company;
 						}
 					);
@@ -555,7 +556,7 @@ namespace Trakit.Sync {
 						new Company() { Reseller = companyReseller },
 						(k, obj) => {
 							var company = (Company)obj;
-							if (companyReseller > company.Styles) company.Reseller = companyReseller;
+							if (companyReseller > company.Style) company.Reseller = companyReseller;
 							return company;
 						}
 					);

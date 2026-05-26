@@ -124,11 +124,21 @@ namespace Trakit.Socket {
 		/// </summary>
 		public TimeSpan ReconnectDelay => TimeSpan.FromMilliseconds(_reconDelay);
 
-		public TrakitSocketCommander() : this(new Uri(URI_PROD)) { }
-		public TrakitSocketCommander(Uri baseAddress) {
-			this.BaseAddress = baseAddress;
+		public TrakitSocketCommander(Uri baseAddress = default) : base(baseAddress ?? new Uri(URI_PROD)) {
 			this.Client = new ClientWebSocket();
 			_noop.Elapsed += _noopElapsed;
+		}
+		public TrakitSocketCommander(RepSelfGet account, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(account);
+		}
+		public TrakitSocketCommander(SelfMachine machine, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(machine);
+		}
+		public TrakitSocketCommander(Machine machine, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(machine);
+		}
+		public TrakitSocketCommander(Guid sessionId, Uri baseAddress) : this(baseAddress) {
+			this.SetAuth(sessionId);
 		}
 		/// <summary>
 		/// Disposes of the status setting task.
@@ -269,18 +279,20 @@ namespace Trakit.Socket {
 				this.Client.Options.SetRequestHeader(pair.Key, pair.Value);
 			}
 			// add machine
-			if (_machine != default) {
+			if (this.Account.machine != default) {
 				this.Client.Options.SetRequestHeader(
 					"Authorization",
-					_machine.secret?.Length > 0
-						? "HMAC256 " + _machine.CreateHmacSignature(
+					this.Account.machine.secret?.Length > 0
+						? "HMAC256 " + this.Account.machine.CreateHmacSignature(
 							DateTime.UtcNow,
 							HttpMethod.Get,
 							uri,
 							0
 						)
-						: "Machine " + Convert.ToBase64String(Encoding.UTF8.GetBytes(_machine.key))
+						: "Machine " + Convert.ToBase64String(Encoding.UTF8.GetBytes(this.Account.machine.key))
 				);
+			} else if (Guid.TryParse(this.Account.ghostId, out Guid ghostId)) {
+				this.Client.Options.AddSubProtocol(ghostId.ToString());
 			}
 			try {
 				_onStatus(TrakitSocketStatus.Opening);
@@ -412,19 +424,18 @@ namespace Trakit.Socket {
 							var msg = new TrakitSocketMessage(message);
 							switch (msg.name) {
 								case "connectionResponse":
-									this.Account = this.Serializer.Deserialize<RepSelfGet>(msg.body);
+									this.SetAuth(this.Serializer.Deserialize<RepSelfGet>(msg.body));
 									if (
-										(
+										this.Account.machine != default
 											// machine was not authorized
-											_machine != default
-											&& this.Account.errorCode != ErrorCode.success
-										) || (
+											? this.Account.errorCode != ErrorCode.success
 											// user ok, or session expire, or not logged in
-											this.Account.errorCode != ErrorCode.success
-											&& this.Account.errorCode != ErrorCode.passwordExpired
-											&& this.Account.errorCode != ErrorCode.sessionExpired
-											&& this.Account.errorCode != ErrorCode.userNotLoggedIn
-										)
+											: (
+												this.Account.errorCode != ErrorCode.success
+												&& this.Account.errorCode != ErrorCode.passwordExpired
+												&& this.Account.errorCode != ErrorCode.sessionExpired
+												&& this.Account.errorCode != ErrorCode.userNotLoggedIn
+											)
 									) {
 										throw new TrakitSocketException(
 											this.Account.message,
@@ -441,6 +452,18 @@ namespace Trakit.Socket {
 									break;
 								case "sessionAdvancedMerged":
 									this.Account.user.Advanced = this.Serializer.Deserialize<SelfUserAdvanced>(msg.body);
+									break;
+								case "sessionAuthenticationMerged":
+									this.Account.user.Authentication = this.Serializer.Deserialize<UserAuthentication>(msg.body);
+									break;
+								case "sessionStateMerged":
+									this.Account.user.State = this.Serializer.Deserialize<UserState>(msg.body);
+									break;
+								case "sessionPoliciesMerged":
+									this.Account.user.policy = this.Serializer.Deserialize<CompanyPolicy>(msg.body);
+									break;
+								case "broadcast":
+									//?
 									break;
 							}
 							this.MessageReceived?.Invoke(this, msg);
