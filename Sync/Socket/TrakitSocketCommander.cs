@@ -124,24 +124,12 @@ namespace Trakit.Socket {
 		/// </summary>
 		public TimeSpan ReconnectDelay => TimeSpan.FromMilliseconds(_reconDelay);
 
-		public TrakitSocketCommander(Uri baseAddress = default) : base(baseAddress ?? new Uri(URI_PROD)) {
+		public TrakitSocketCommander(RepSelfGet account = default, Uri baseAddress = default) : base(account, baseAddress ?? new Uri(URI_PROD)) {
 			this.Client = new ClientWebSocket();
 			_noop.Elapsed += _noopElapsed;
 		}
-		public TrakitSocketCommander(RepSelfGet account, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(account);
-		}
-		public TrakitSocketCommander(SelfMachine machine, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(machine);
-		}
-		public TrakitSocketCommander(Machine machine, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(machine);
-		}
-		public TrakitSocketCommander(Guid sessionId, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(sessionId);
-		}
 		/// <summary>
-		/// Disposes of the status setting task.
+		/// Disposes of the internal WebSocket client.
 		/// </summary>
 		public void Dispose() {
 			var wss = this.Client;
@@ -280,16 +268,23 @@ namespace Trakit.Socket {
 			}
 			// add machine
 			if (this.Account.machine != default) {
-				this.Client.Options.SetRequestHeader(
-					"Authorization",
-					this.Account.machine.secret?.Length > 0
-						? "HMAC256 " + this.Account.machine.CreateHmacSignature(
-							DateTime.UtcNow,
-							HttpMethod.Get,
-							uri,
-							0
-						)
-						: "Machine " + Convert.ToBase64String(Encoding.UTF8.GetBytes(this.Account.machine.key))
+				this.Client.Options.AddSubProtocol(
+					(
+						this.Account.machine.secret?.Length > 0
+							? "HMAC256#" + this.Account.machine.CreateHmacSignature(
+								DateTime.UtcNow,
+								HttpMethod.Get,
+								uri,
+								0
+							)
+							: "MACHINE#" + Convert.ToBase64String(
+								Encoding.UTF8.GetBytes(
+									this.Account.machine.key
+								)
+							)
+					)
+					.Replace("/", "|")
+					.TrimEnd('=')
 				);
 			} else if (Guid.TryParse(this.Account.ghostId, out Guid ghostId)) {
 				this.Client.Options.AddSubProtocol(ghostId.ToString());
