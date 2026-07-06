@@ -313,12 +313,14 @@ namespace Trakit.Sync {
 					};
 				#endregion Messaging
 
-				#region Users and Groups
+				#region Accounts
 				/// <seealso cref="User"/>
 				case "User":
 					return new[] {
 						SubscriptionType.userGeneral,
 						SubscriptionType.userAdvanced,
+						SubscriptionType.userAuthentication,
+						SubscriptionType.userState,
 					};
 				/// <seealso cref="UserGeneral"/>
 				case "UserGeneral":
@@ -329,6 +331,16 @@ namespace Trakit.Sync {
 				case "UserAdvanced":
 					return new[] {
 						SubscriptionType.userAdvanced,
+					};
+				/// <seealso cref="UserAuthentication"/>
+				case "UserAuthentication":
+					return new[] {
+						SubscriptionType.userAuthentication,
+					};
+				/// <seealso cref="UserState"/>
+				case "UserState":
+					return new[] {
+						SubscriptionType.userState,
 					};
 				/// <seealso cref="UserGroup"/>
 				case "UserGroup":
@@ -343,7 +355,7 @@ namespace Trakit.Sync {
 				/// <seealso cref="Session"/>
 				case "Session":
 					break;// these can't be kept in sync
-					#endregion Users and Groups
+					#endregion Accounts
 			}
 			throw new KeyNotFoundException($"{type.FullName} cannot be kept in-sync");
 		}
