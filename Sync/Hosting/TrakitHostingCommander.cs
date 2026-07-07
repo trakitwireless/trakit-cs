@@ -28,7 +28,7 @@ namespace Trakit.Imaging {
 		public const string URI_BETA = "https://wanshitong.trakit.ca";
 
 		public TrakitHostingCommander(
-			Uri baseAddress = default,
+			Uri baseAddress,
 			RepSelfGet account = default
 		) : base(
 			baseAddress ?? new Uri(URI_PROD),

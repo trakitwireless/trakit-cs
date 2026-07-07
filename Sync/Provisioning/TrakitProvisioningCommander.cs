@@ -27,7 +27,7 @@ namespace Trakit.Provisioning {
 		public const string URI_BETA = "https://chimera.trakit.ca";
 
 		public TrakitProvisioningCommander(
-			Uri baseAddress = default,
+			Uri baseAddress,
 			RepSelfGet account = default
 		) : base(
 			baseAddress ?? new Uri(URI_PROD),

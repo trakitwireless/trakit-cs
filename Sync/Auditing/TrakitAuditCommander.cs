@@ -34,7 +34,7 @@ namespace Trakit.Restful {
 		public const string URI_BETA = "https://gloomhands.trakit.ca";
 
 		public TrakitAuditCommander(
-			Uri baseAddress = default,
+			Uri baseAddress,
 			RepSelfGet account = default
 		) : base(
 			baseAddress ?? new Uri(URI_PROD),

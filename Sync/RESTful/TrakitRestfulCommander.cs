@@ -36,7 +36,7 @@ namespace Trakit.Restful {
 		public const string URI_BETA = "https://mindflayer.trakit.ca";
 
 		public TrakitRestfulCommander(
-			Uri baseAddress = default,
+			Uri baseAddress,
 			RepSelfGet account = default
 		) : base(
 			baseAddress ?? new Uri(URI_PROD),

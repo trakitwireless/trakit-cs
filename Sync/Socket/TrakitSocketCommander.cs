@@ -125,7 +125,7 @@ namespace Trakit.Socket {
 		public TimeSpan ReconnectDelay => TimeSpan.FromMilliseconds(_reconDelay);
 
 		public TrakitSocketCommander(
-			Uri baseAddress = default,
+			Uri baseAddress,
 			RepSelfGet account = default
 		) : base(
 			baseAddress ?? new Uri(URI_PROD),
