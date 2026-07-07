@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Linq;
 using System.Net.Http;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Web;
 using Newtonsoft.Json.Linq;
 using Trakit.Commands;
 using Trakit.Https;
@@ -35,9 +33,22 @@ namespace Trakit.Restful {
 		/// </remarks>
 		public const string URI_BETA = "https://gloomhands.trakit.ca";
 
-		public TrakitAuditCommander(RepSelfGet account = default, Uri baseAddress = default) : base(account, baseAddress ?? new Uri(URI_PROD)) {
+		public TrakitAuditCommander(
+			Uri baseAddress = default,
+			RepSelfGet account = default
+		) : base(
+			baseAddress ?? new Uri(URI_PROD),
+			account
+		) {
 			this.Client = new HttpClient();
 		}
+		public TrakitAuditCommander(
+			RepSelfGet account = default,
+			Uri baseAddress = default
+		) : this(
+			baseAddress,
+			account
+		) { }
 		public void Dispose() {
 			var http = this.Client;
 			this.Client = default;

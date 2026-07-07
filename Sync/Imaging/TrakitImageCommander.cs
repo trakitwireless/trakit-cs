@@ -27,21 +27,22 @@ namespace Trakit.Imaging {
 		/// </remarks>
 		public const string URI_BETA = "https://boogeyman.trakit.ca";
 
-		public TrakitImageCommander(Uri baseAddress = default) : base(baseAddress ?? new Uri(URI_PROD)) {
+		public TrakitImageCommander(
+			Uri baseAddress = default,
+			RepSelfGet account = default
+		) : base(
+			baseAddress ?? new Uri(URI_PROD),
+			account
+		) {
 			this.Client = new HttpClient();
 		}
-		public TrakitImageCommander(RepSelfGet account, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(account);
-		}
-		public TrakitImageCommander(SelfMachine machine, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(machine);
-		}
-		public TrakitImageCommander(Machine machine, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(machine);
-		}
-		public TrakitImageCommander(Guid sessionId, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(sessionId);
-		}
+		public TrakitImageCommander(
+			RepSelfGet account = default,
+			Uri baseAddress = default
+		) : this(
+			baseAddress,
+			account
+		) { }
 		public void Dispose() {
 			var http = this.Client;
 			this.Client = default;

@@ -35,9 +35,25 @@ namespace Trakit.Restful {
 		/// </remarks>
 		public const string URI_BETA = "https://mindflayer.trakit.ca";
 
-		public TrakitRestfulCommander(RepSelfGet account = default, Uri baseAddress = default) : base(account, baseAddress ?? new Uri(URI_PROD)) {
+		public TrakitRestfulCommander(
+			Uri baseAddress = default,
+			RepSelfGet account = default
+		) : base(
+			baseAddress ?? new Uri(URI_PROD),
+			account
+		) {
 			this.Client = new HttpClient();
 		}
+		public TrakitRestfulCommander(
+			RepSelfGet account = default,
+			Uri baseAddress = default
+		) : this(
+			baseAddress,
+			account
+		) { }
+		/// <summary>
+		/// Disposes of the internal <see cref="HttpClient"/>, and cancels any pending requests.
+		/// </summary>
 		public void Dispose() {
 			var http = this.Client;
 			this.Client = default;

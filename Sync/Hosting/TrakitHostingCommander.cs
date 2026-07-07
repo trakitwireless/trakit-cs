@@ -27,21 +27,22 @@ namespace Trakit.Imaging {
 		/// </remarks>
 		public const string URI_BETA = "https://wanshitong.trakit.ca";
 
-		public TrakitHostingCommander(Uri baseAddress = default) : base(baseAddress ?? new Uri(URI_PROD)) {
+		public TrakitHostingCommander(
+			Uri baseAddress = default,
+			RepSelfGet account = default
+		) : base(
+			baseAddress ?? new Uri(URI_PROD),
+			account
+		) {
 			this.Client = new HttpClient();
 		}
-		public TrakitHostingCommander(RepSelfGet account, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(account);
-		}
-		public TrakitHostingCommander(SelfMachine machine, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(machine);
-		}
-		public TrakitHostingCommander(Machine machine, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(machine);
-		}
-		public TrakitHostingCommander(Guid sessionId, Uri baseAddress) : this(baseAddress) {
-			this.SetAuth(sessionId);
-		}
+		public TrakitHostingCommander(
+			RepSelfGet account = default,
+			Uri baseAddress = default
+		) : this(
+			baseAddress,
+			account
+		) { }
 		public void Dispose() {
 			var http = this.Client;
 			this.Client = default;

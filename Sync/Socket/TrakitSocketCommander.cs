@@ -124,12 +124,25 @@ namespace Trakit.Socket {
 		/// </summary>
 		public TimeSpan ReconnectDelay => TimeSpan.FromMilliseconds(_reconDelay);
 
-		public TrakitSocketCommander(RepSelfGet account = default, Uri baseAddress = default) : base(account, baseAddress ?? new Uri(URI_PROD)) {
+		public TrakitSocketCommander(
+			Uri baseAddress = default,
+			RepSelfGet account = default
+		) : base(
+			baseAddress ?? new Uri(URI_PROD),
+			account
+		) {
 			this.Client = new ClientWebSocket();
 			_noop.Elapsed += _noopElapsed;
 		}
+		public TrakitSocketCommander(
+			RepSelfGet account = default,
+			Uri baseAddress = default
+		) : this(
+			baseAddress,
+			account
+		) { }
 		/// <summary>
-		/// Disposes of the internal WebSocket client.
+		/// Disposes of the internal <see cref="ClientWebSocket"> and cancels any pending commands.
 		/// </summary>
 		public void Dispose() {
 			var wss = this.Client;
